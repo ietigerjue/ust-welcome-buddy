@@ -80,11 +80,11 @@ function ChatPage() {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <SiteNav />
-      <main className="flex-1 mx-auto w-full max-w-3xl px-4 sm:px-6 flex flex-col">
+      <main className="flex-1 min-h-0 mx-auto w-full max-w-3xl px-4 sm:px-6 flex flex-col">
         {messages.length === 0 ? (
           <EmptyState onPick={send} />
         ) : (
-          <div className="flex-1 py-8 space-y-6">
+          <div className="flex-1 py-6 sm:py-8 space-y-5 sm:space-y-6">
             {messages.map((m) => (
               <MessageBubble key={m.id} message={m} />
             ))}
@@ -94,20 +94,20 @@ function ChatPage() {
 
         <form
           onSubmit={handleSubmit}
-          className="sticky bottom-0 bg-gradient-to-t from-background via-background to-background/0 pt-6 pb-6"
+          className="sticky bottom-0 bg-gradient-to-t from-background via-background to-background/0 pt-4 sm:pt-6 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:pb-6"
         >
           <div className="relative rounded-2xl border border-border bg-card shadow-sm focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/10 transition-all">
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="Ask UST Buddy anything · 隨便問我"
-              className="w-full bg-transparent px-5 py-4 pr-14 text-sm outline-none placeholder:text-muted-foreground"
+              className="w-full bg-transparent px-4 sm:px-5 py-4 pr-16 text-sm outline-none placeholder:text-muted-foreground"
               disabled={sending}
             />
             <button
               type="submit"
               disabled={!input.trim() || sending}
-              className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="absolute right-1.5 sm:right-2 top-1/2 -translate-y-1/2 inline-flex h-10 w-10 sm:h-9 sm:w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               <Send className="h-4 w-4" />
             </button>
@@ -123,8 +123,8 @@ function ChatPage() {
 
 function EmptyState({ onPick }: { onPick: (q: string) => void }) {
   return (
-    <div className="flex-1 flex flex-col items-center justify-center py-16">
-      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground mb-5">
+    <div className="flex-1 min-h-0 overflow-y-auto flex flex-col items-center justify-start sm:justify-center py-8 sm:py-16 pb-32 sm:pb-16">
+      <div className="flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground mb-4 sm:mb-5">
         <Sparkles className="h-6 w-6" />
       </div>
       <h1 className="text-2xl font-semibold tracking-tight">Hi, I'm UST Buddy</h1>
@@ -133,13 +133,13 @@ function EmptyState({ onPick }: { onPick: (q: string) => void }) {
         Ask me anything about settling into HKUST — arrival, housing, transport, food,
         SIM cards, banking, and more.
       </p>
-      <div className="mt-8 w-full max-w-xl grid gap-2">
+      <div className="mt-6 sm:mt-8 w-full max-w-xl grid gap-2">
         <p className="text-xs font-medium text-muted-foreground mb-1">Try asking:</p>
         {suggestedQuestions.map((q) => (
           <button
             key={q}
             onClick={() => onPick(q)}
-            className="text-left text-sm rounded-lg border border-border bg-card px-4 py-3 hover:border-primary/40 hover:bg-secondary/40 transition-colors"
+            className="text-left text-sm rounded-lg border border-border bg-card px-3 py-2.5 sm:px-4 sm:py-3 hover:border-primary/40 hover:bg-secondary/40 transition-colors"
           >
             {q}
           </button>
@@ -161,7 +161,12 @@ function MessageBubble({ message }: { message: Message }) {
       >
         {isUser ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
       </div>
-      <div className={cn("flex flex-col gap-2 max-w-[85%]", isUser && "items-end")}>
+      <div
+        className={cn(
+          "flex flex-col gap-2 max-w-[82%] sm:max-w-[85%]",
+          isUser && "items-end"
+        )}
+      >
         <div
           className={cn(
             "rounded-2xl px-4 py-3 text-sm leading-relaxed",
@@ -182,25 +187,31 @@ function MessageBubble({ message }: { message: Message }) {
           )}
         </div>
         {message.sources && message.sources.length > 0 && (
-          <div className="flex flex-wrap gap-2">
+          <div className="grid w-full gap-2 sm:flex sm:flex-wrap">
             {message.sources.map((s) => (
               <div
                 key={s.id}
-                className="group inline-flex items-center gap-1.5 rounded-md border border-border bg-secondary/50 px-2.5 py-1 text-[11px]"
+                className="group flex w-full items-start gap-1.5 rounded-md border border-border bg-secondary/50 px-2.5 py-1.5 text-[11px] sm:inline-flex sm:w-auto sm:items-center sm:py-1"
                 title={s.snippet}
               >
-                <BookOpen className="h-3 w-3 text-primary" />
-                <span className="font-medium">{s.title}</span>
+                <BookOpen className="mt-0.5 h-3 w-3 shrink-0 text-primary sm:mt-0" />
+                <span className="min-w-0 flex-1 sm:flex sm:items-center sm:gap-1.5">
+                  <span className="block font-medium sm:inline">{s.title}</span>
                 {s.source ? (
-                  <span className="text-muted-foreground">
-                    · {s.source}
+                  <span className="block break-words text-muted-foreground sm:inline">
+                    <span className="hidden sm:inline">· </span>
+                    {s.source}
                     {s.updatedAt ? ` · ${s.updatedAt}` : ""}
                   </span>
                 ) : (
                   s.titleZh && (
-                    <span className="text-muted-foreground">· {s.titleZh}</span>
+                    <span className="block text-muted-foreground sm:inline">
+                      <span className="hidden sm:inline">· </span>
+                      {s.titleZh}
+                    </span>
                   )
                 )}
+                </span>
               </div>
             ))}
           </div>
