@@ -1,10 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { SiteNav, SiteFooter } from "@/components/site-nav";
 import {
-  MessageSquareText,
-  BookOpen,
-  Upload,
-  FileText,
   Plane,
   Home,
   Bus,
@@ -13,6 +9,9 @@ import {
   CreditCard,
   ArrowRight,
   Sparkles,
+  MessageSquareText,
+  BookOpen,
+  Languages,
 } from "lucide-react";
 
 export const Route = createFileRoute("/")({
@@ -23,7 +22,13 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "UST Buddy is an AI knowledge-base chatbot for new HKUST students. Ask about housing, transport, SIM cards, food, banking, and arrival prep — in English and Chinese.",
+          "UST Buddy is an AI chatbot for new HKUST students. Ask about housing, transport, SIM cards, food, banking and arrival prep — in English and Chinese.",
+      },
+      { property: "og:title", content: "UST Buddy — AI guide for HKUST freshmen" },
+      {
+        property: "og:description",
+        content:
+          "Ask anything about settling into HKUST. Bilingual EN + 中文, with sourced answers.",
       },
     ],
   }),
@@ -54,12 +59,12 @@ function Index() {
         {/* Hero */}
         <section className="relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-b from-secondary/40 via-background to-background pointer-events-none" />
-          <div className="absolute top-20 left-1/2 -translate-x-1/2 h-[400px] w-[700px] rounded-full bg-primary/5 blur-3xl pointer-events-none" />
+          <div className="absolute top-20 left-1/2 -translate-x-1/2 h-[420px] w-[700px] rounded-full bg-primary/5 blur-3xl pointer-events-none" />
 
-          <div className="relative mx-auto max-w-5xl px-6 pt-20 pb-20 text-center">
+          <div className="relative mx-auto max-w-4xl px-6 pt-20 pb-16 text-center">
             <div className="inline-flex items-center gap-2 rounded-full border border-border bg-background/80 px-3 py-1 text-xs text-muted-foreground mb-6">
               <Sparkles className="h-3 w-3 text-primary" />
-              AI knowledge base · Built for HKUST · 為科大新生而設
+              AI campus assistant · Built for HKUST · 為科大新生而設
             </div>
             <h1 className="text-5xl sm:text-6xl font-semibold tracking-tight text-foreground">
               Your AI buddy for life at HKUST
@@ -82,10 +87,10 @@ function Index() {
                 <ArrowRight className="h-4 w-4" />
               </Link>
               <Link
-                to="/knowledge"
+                to="/about"
                 className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-6 py-3 text-sm font-medium hover:bg-secondary transition-colors"
               >
-                Browse knowledge base
+                Learn more
               </Link>
             </div>
 
@@ -106,12 +111,12 @@ function Index() {
         </section>
 
         {/* Examples */}
-        <section className="mx-auto max-w-5xl px-6 py-16">
-          <div className="text-center mb-10">
+        <section className="mx-auto max-w-4xl px-6 py-12">
+          <div className="text-center mb-8">
             <h2 className="text-2xl font-semibold tracking-tight">
               Ask anything a freshman would ask
             </h2>
-            <p className="mt-2 text-sm text-muted-foreground">常見問題範例</p>
+            <p className="mt-2 text-sm text-muted-foreground">常見問題範例 · Click to try</p>
           </div>
           <div className="grid sm:grid-cols-2 gap-3">
             {examples.map((q) => (
@@ -129,52 +134,43 @@ function Index() {
         </section>
 
         {/* Features */}
-        <section className="mx-auto max-w-5xl px-6 py-16">
-          <div className="grid md:grid-cols-4 gap-4">
+        <section className="mx-auto max-w-4xl px-6 py-12">
+          <div className="grid sm:grid-cols-3 gap-4">
             {[
               {
                 icon: MessageSquareText,
-                title: "Chat",
-                zh: "對話",
-                desc: "Conversational answers with sources",
-                to: "/chat",
+                title: "Conversational",
+                zh: "對話式回答",
+                desc: "Ask naturally, like talking to a senior student.",
               },
               {
                 icon: BookOpen,
-                title: "Knowledge Base",
-                zh: "知識庫",
-                desc: "Curated freshman documents",
-                to: "/knowledge",
+                title: "Sourced answers",
+                zh: "註明資料來源",
+                desc: "Every reply cites the HKUST guide it came from.",
               },
               {
-                icon: Upload,
-                title: "Upload",
-                zh: "上載",
-                desc: "Admins add PDFs, MD, TXT",
-                to: "/upload",
-              },
-              {
-                icon: FileText,
-                title: "Documents",
-                zh: "文件",
-                desc: "Manage indexed content",
-                to: "/documents",
+                icon: Languages,
+                title: "Bilingual",
+                zh: "中英雙語",
+                desc: "Comfortable in English and Chinese.",
               },
             ].map((f) => (
-              <Link
+              <div
                 key={f.title}
-                to={f.to}
-                className="group rounded-lg border border-border bg-card p-5 hover:border-primary/40 transition-colors"
+                className="rounded-lg border border-border bg-card p-5"
               >
-                <div className="flex h-10 w-10 items-center justify-center rounded-md bg-secondary text-primary mb-3 group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+                <div className="flex h-10 w-10 items-center justify-center rounded-md bg-secondary text-primary mb-3">
                   <f.icon className="h-5 w-5" />
                 </div>
                 <div className="flex items-baseline gap-2">
                   <h3 className="text-sm font-semibold">{f.title}</h3>
                   <span className="text-[10px] text-muted-foreground">{f.zh}</span>
                 </div>
-                <p className="mt-1 text-xs text-muted-foreground">{f.desc}</p>
-              </Link>
+                <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
+                  {f.desc}
+                </p>
+              </div>
             ))}
           </div>
         </section>
