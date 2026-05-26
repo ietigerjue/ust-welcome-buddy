@@ -47,6 +47,12 @@ export const mockSources: Source[] = [
     titleZh: "科大餐飲地圖",
     snippet: "All food options across LG7, LG5, the Atrium and nearby Hang Hau.",
   },
+  {
+    id: "s6",
+    title: "SIM Card & Mobile Plans in HK",
+    titleZh: "香港電話卡與通訊計劃",
+    snippet: "How new students can choose prepaid SIM cards and mobile plans in Hong Kong.",
+  },
 ];
 
 export const mockDocs: Doc[] = [
