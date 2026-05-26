@@ -1,8 +1,12 @@
+import { searchKnowledgeBase } from "@/lib/searchKnowledgeBase";
+
 export type Source = {
   id: string;
   title: string;
-  titleZh: string;
+  titleZh?: string;
   snippet: string;
+  source?: string;
+  updatedAt?: string;
 };
 
 export type Doc = {
@@ -178,20 +182,29 @@ export const mockAnswers: MockAnswer[] = [
 ];
 
 export function findMockAnswer(question: string): { answer: string; sources: Source[] } {
-  const q = question.toLowerCase();
-  const hit = mockAnswers.find((a) => a.match.some((m) => q.includes(m.toLowerCase())));
-  if (hit) {
+  const documents = searchKnowledgeBase(question);
+
+  if (documents.length > 0) {
+    const sources = documents.map((document) => ({
+      id: document.id,
+      title: document.title,
+      snippet: document.content,
+      source: document.source,
+      updatedAt: document.updatedAt,
+    }));
+
     return {
-      answer: hit.answer,
-      sources: hit.sources
-        .map((id) => mockSources.find((s) => s.id === id))
-        .filter(Boolean) as Source[],
+      answer:
+        `我在本地知識庫中找到了 ${documents.length} 篇相關資料。` +
+        "\n\n" +
+        "This is a mock answer for now. I have not called OpenAI yet; the references below are matched directly from the local preset knowledge base.",
+      sources,
     };
   }
+
   return {
-    answer:
-      "That's a great question! Based on the HKUST knowledge base, I'd recommend checking the official freshman orientation portal and your hall's welcome pack. Once the live knowledge base is connected, I'll be able to give you specific, sourced answers.\n\nTry asking about: **airport transport, dorm prep, SIM cards, Octopus, or campus food**.",
-    sources: [mockSources[0], mockSources[2]],
+    answer: "当前知识库没有覆盖这个问题。",
+    sources: [],
   };
 }
 

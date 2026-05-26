@@ -191,7 +191,16 @@ function MessageBubble({ message }: { message: Message }) {
               >
                 <BookOpen className="h-3 w-3 text-primary" />
                 <span className="font-medium">{s.title}</span>
-                <span className="text-muted-foreground">· {s.titleZh}</span>
+                {s.source ? (
+                  <span className="text-muted-foreground">
+                    · {s.source}
+                    {s.updatedAt ? ` · ${s.updatedAt}` : ""}
+                  </span>
+                ) : (
+                  s.titleZh && (
+                    <span className="text-muted-foreground">· {s.titleZh}</span>
+                  )
+                )}
               </div>
             ))}
           </div>
