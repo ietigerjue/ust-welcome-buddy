@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useRef, useEffect } from "react";
 import { SiteNav } from "@/components/site-nav";
-import { findMockAnswer, suggestedQuestions, type Source } from "@/lib/mock-data";
+import { suggestedQuestions, type Source } from "@/lib/mock-data";
 import { Send, Bot, User, BookOpen, Sparkles, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -14,6 +14,11 @@ type Message = {
 };
 
 type ChatSearch = { q?: string };
+
+type ChatApiResponse = {
+  answer: string;
+  sources: Source[];
+};
 
 export const Route = createFileRoute("/chat")({
   component: ChatPage,
@@ -59,17 +64,43 @@ function ChatPage() {
     setInput("");
     setSending(true);
 
-    setTimeout(() => {
-      const { answer, sources } = findMockAnswer(text);
-      setMessages((m) =>
-        m.map((msg) =>
-          msg.id === pendingMsg.id
-            ? { ...msg, content: answer, sources, pending: false }
-            : msg
-        )
-      );
-      setSending(false);
-    }, 800);
+    fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question: text }),
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("Chat API request failed");
+        }
+        return response.json() as Promise<ChatApiResponse>;
+      })
+      .then(({ answer, sources }) => {
+        setMessages((m) =>
+          m.map((msg) =>
+            msg.id === pendingMsg.id
+              ? { ...msg, content: answer, sources, pending: false }
+              : msg
+          )
+        );
+      })
+      .catch(() => {
+        setMessages((m) =>
+          m.map((msg) =>
+            msg.id === pendingMsg.id
+              ? {
+                  ...msg,
+                  content: "聊天接口暂时不可用，请稍后再试。",
+                  sources: [],
+                  pending: false,
+                }
+              : msg
+          )
+        );
+      })
+      .finally(() => {
+        setSending(false);
+      });
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -197,20 +228,21 @@ function MessageBubble({ message }: { message: Message }) {
                 <BookOpen className="mt-0.5 h-3 w-3 shrink-0 text-primary sm:mt-0" />
                 <span className="min-w-0 flex-1 sm:flex sm:items-center sm:gap-1.5">
                   <span className="block font-medium sm:inline">{s.title}</span>
-                {s.source ? (
-                  <span className="block break-words text-muted-foreground sm:inline">
-                    <span className="hidden sm:inline">· </span>
-                    {s.source}
-                    {s.updatedAt ? ` · ${s.updatedAt}` : ""}
-                  </span>
-                ) : (
-                  s.titleZh && (
-                    <span className="block text-muted-foreground sm:inline">
+                  {s.source ? (
+                    <span className="block break-words text-muted-foreground sm:inline">
                       <span className="hidden sm:inline">· </span>
-                      {s.titleZh}
+                      {s.category ? `${s.category} · ` : ""}
+                      {s.source}
+                      {s.updatedAt ? ` · ${s.updatedAt}` : ""}
                     </span>
-                  )
-                )}
+                  ) : (
+                    s.titleZh && (
+                      <span className="block text-muted-foreground sm:inline">
+                        <span className="hidden sm:inline">· </span>
+                        {s.titleZh}
+                      </span>
+                    )
+                  )}
                 </span>
               </div>
             ))}

@@ -7,6 +7,7 @@ export type Source = {
   snippet: string;
   source?: string;
   updatedAt?: string;
+  category?: string;
 };
 
 export type Doc = {
