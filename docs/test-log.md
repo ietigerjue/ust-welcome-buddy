@@ -30,3 +30,15 @@ Use this file to record manual test questions, answer quality, source coverage, 
 ## Regression Notes
 
 - Keep examples that previously failed, so they can be retested after prompt, search, or knowledge base changes.
+
+## Test 1
+Question: 从香港机场怎么去港科？ How do I get to HKUST from Hong Kong Airport? 从深圳湾去港科怎么走？ 第一次来香港，行李很多，去港科建议打车吗？
+Expected: 回答机场到 HKUST 的交通方式，并显示来源。
+Result: Pass 
+Notes:
+
+## Test 2
+Question: Canvas 是什么？ SIS 是什么？ 港科学生邮箱怎么用？ Add/drop 是什么意思？
+Expected: 回答宿舍准备清单，并显示来源。
+Result: Pass 
+Notes:

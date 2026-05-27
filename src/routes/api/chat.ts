@@ -1,6 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { searchKnowledgeBase } from "@/lib/searchKnowledgeBase";
-import { generateAnswer } from "@/lib/llm";
 
 type ChatSource = {
   id: string;
@@ -24,6 +22,7 @@ export const Route = createFileRoute("/api/chat")({
   server: {
     handlers: {
       POST: async ({ request }) => {
+        const { searchKnowledgeBase } = await import("@/lib/searchKnowledgeBase");
         const body = await request.json().catch(() => null);
         const question = typeof body?.question === "string" ? body.question : "";
         const documents = searchKnowledgeBase(question);
@@ -35,6 +34,7 @@ export const Route = createFileRoute("/api/chat")({
           });
         }
 
+        const { generateAnswer } = await import("@/lib/llm");
         const answer = await generateAnswer({
           question,
           contextDocuments: documents,

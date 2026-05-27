@@ -1,7 +1,5 @@
-import {
-  knowledgeBase,
-  type KnowledgeDocument,
-} from "@/data/knowledgeBase";
+import type { KnowledgeDocument } from "@/data/knowledgeBase";
+import { loadKnowledgeBase } from "@/lib/loadKnowledgeBase";
 
 const MAX_RESULTS = 3;
 const STOP_WORDS = new Set([
@@ -83,7 +81,7 @@ export function searchKnowledgeBaseWithScores(
     return [];
   }
 
-  return knowledgeBase
+  return loadKnowledgeBase()
     .map((document) => ({
       document,
       score: scoreDocument(document, terms),
