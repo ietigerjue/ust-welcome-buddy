@@ -100,6 +100,8 @@ type SupabaseChunkRow = {
 };
 
 export type SupabaseKnowledgeDocument = KnowledgeDocument & {
+  document_id: string;
+  slug: string;
   chunkIndex: number;
   sourceUrl: string;
   updated_at: string;
@@ -267,11 +269,14 @@ function toKnowledgeDocument(
 ): SupabaseKnowledgeDocument {
   const document = getJoinedDocument(row);
   const slug = document?.slug || document?.id || row.id;
+  const documentId = document?.id ?? slug;
   const updatedAt = document?.updated_at ?? "";
   const sourceUrl = document?.source_url ?? "";
 
   return {
     id: `${slug}:${row.chunk_index ?? 0}`,
+    document_id: documentId,
+    slug,
     title: document?.title ?? "Untitled document",
     category: document?.category ?? "",
     content: row.content ?? "",

@@ -2,12 +2,17 @@ import { searchKnowledgeBase } from "@/lib/searchKnowledgeBase";
 
 export type Source = {
   id: string;
+  document_id?: string;
+  slug?: string;
   title: string;
   titleZh?: string;
   snippet: string;
   source?: string;
+  source_url?: string;
   updatedAt?: string;
+  updated_at?: string;
   category?: string;
+  matchedChunksCount?: number;
 };
 
 export type Doc = {

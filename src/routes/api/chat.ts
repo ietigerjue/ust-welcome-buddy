@@ -2,6 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 
 type ChatSource = {
   id: string;
+  document_id?: string;
+  slug?: string;
   title: string;
   snippet: string;
   source: string;
@@ -9,6 +11,7 @@ type ChatSource = {
   updatedAt: string;
   updated_at?: string;
   category: string;
+  matchedChunksCount?: number;
 };
 
 type ChatResponse = {
@@ -35,11 +38,33 @@ function getMiniMaxErrorMessage(answer: string) {
 
 function getOptionalDocumentString(
   document: object,
-  field: "source_url" | "updated_at"
+  field: "document_id" | "slug" | "source_url" | "updated_at"
 ) {
   const value = (document as Partial<Record<typeof field, unknown>>)[field];
 
   return typeof value === "string" ? value : undefined;
+}
+
+function toChatSource(document: {
+  id: string;
+  title: string;
+  content: string;
+  source: string;
+  updatedAt: string;
+  category: string;
+}): ChatSource {
+  return {
+    id: document.id,
+    document_id: getOptionalDocumentString(document, "document_id"),
+    slug: getOptionalDocumentString(document, "slug"),
+    title: document.title,
+    snippet: document.content,
+    source: document.source,
+    source_url: getOptionalDocumentString(document, "source_url"),
+    updatedAt: document.updatedAt,
+    updated_at: getOptionalDocumentString(document, "updated_at"),
+    category: document.category,
+  };
 }
 
 async function searchKnowledge(question: string) {
@@ -82,6 +107,7 @@ export const Route = createFileRoute("/api/chat")({
         }
 
         const { generateAnswer } = await import("@/lib/llm");
+        const { dedupeSources } = await import("@/lib/dedupeSources");
         let answer: string;
 
         try {
@@ -95,33 +121,18 @@ export const Route = createFileRoute("/api/chat")({
         }
 
         const errorMessage = getMiniMaxErrorMessage(answer);
+        const dedupedSources = dedupeSources(documents.map(toChatSource));
+
         await logQuestion({
           question,
           answerStatus: errorMessage ? "error" : "answered",
-          matchedSources: documents.map((document) => ({
-            id: document.id,
-            title: document.title,
-            source: document.source,
-            source_url: getOptionalDocumentString(document, "source_url"),
-            category: document.category,
-            updatedAt: document.updatedAt,
-            updated_at: getOptionalDocumentString(document, "updated_at"),
-          })),
+          matchedSources: dedupedSources,
           errorMessage,
         });
 
         return json({
           answer,
-          sources: documents.map((document) => ({
-            id: document.id,
-            title: document.title,
-            snippet: document.content,
-            source: document.source,
-            source_url: getOptionalDocumentString(document, "source_url"),
-            updatedAt: document.updatedAt,
-            updated_at: getOptionalDocumentString(document, "updated_at"),
-            category: document.category,
-          })),
+          sources: dedupedSources,
         });
       },
     },
