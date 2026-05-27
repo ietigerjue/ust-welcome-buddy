@@ -1,54 +1,93 @@
 # UST Buddy
 
-UST Buddy is a knowledge-base AI assistant for HKUST freshmen. It answers student-life questions using a prepared local knowledge base and MiniMax API, with source-grounded responses.
+UST Buddy is a knowledge-base AI assistant for HKUST freshmen. It answers student-life questions using a prepared Markdown knowledge base and MiniMax API, with source-grounded responses.
 
 ## Target Users
 
 - Incoming HKUST undergraduate and postgraduate students
-- New students planning arrival, housing, SIM cards, transport, campus dining, and campus systems
-- Student helpers or orientation teams who need a lightweight freshman Q&A demo
+- New students preparing for arrival, registration, housing, transport, SIM cards, payments, and campus systems
+- Orientation helpers or student groups who need a lightweight freshman Q&A assistant
 
 ## Core Features
 
-- Chat-first interface for asking HKUST freshman-life questions
-- Prepared local knowledge base managed by the app owner/admin
-- Simple keyword retrieval over local documents before calling the LLM
-- MiniMax-powered answer generation with source-grounded context
-- Source references shown with title, source, update date, and category
-- Fallback message when the local knowledge base does not cover a question
-- Mobile-friendly single-page chat experience
+- Chat-first Q&A experience for HKUST freshman-life questions
+- Prepared Markdown knowledge base maintained by the app owner/admin
+- Local keyword search before calling the LLM
+- MiniMax answer generation grounded in retrieved documents
+- Source references with document title, source, update date, and category
+- Clear fallback when the knowledge base does not cover a question
+- Mobile-friendly single-page chat UI
 
 ## Tech Stack
 
-- React / TanStack Start
+- React
+- TanStack Start
 - TypeScript
-- Local knowledge base
-- MiniMax API
-- Vercel
+- Markdown knowledge base
+- `gray-matter` frontmatter parsing
+- MiniMax OpenAI-compatible Chat Completions API
+- Vercel deployment with Nitro output
 
 ## How It Works
 
-1. The user asks a question in the chat page.
+1. A user asks a question in the chat page.
 2. The frontend sends the question to `/api/chat`.
-3. The server searches the prepared local knowledge base.
-4. If no relevant document is found, the API returns: `当前知识库没有覆盖这个问题。`
-5. If relevant documents are found, the API sends up to three context documents to MiniMax.
+3. The server searches local Markdown documents in `content/knowledge/`.
+4. If no relevant document is found, the API returns `当前知识库没有覆盖这个问题。`
+5. If relevant documents are found, the server sends up to three context documents to MiniMax.
 6. MiniMax generates a concise answer based only on the provided context.
 7. The frontend renders the answer and source references.
 
-普通用户不能上传资料。知识库由 app owner/admin 提前维护在本地文件中。
+Users cannot upload files in the current version. The knowledge base is prepared and maintained by the app owner/admin.
+
+## Knowledge Base Format
+
+Knowledge documents live in:
+
+```text
+content/knowledge/
+```
+
+Each Markdown file uses frontmatter:
+
+```md
+---
+id: arrival
+title: Arrival Routes to HKUST / 新生来港路线参考
+category: Arrival
+source: MSSS WeChat article - 2025年新生攻略20
+updatedAt: 2025-08-13
+keywords:
+  - arrival
+  - airport
+  - HKUST
+  - 新生来港
+  - 机场
+---
+
+Markdown content goes here.
+```
+
+`keywords` should include both English and Chinese terms to improve retrieval for Chinese, English, and mixed-language questions.
 
 ## Local Development
 
+Install dependencies:
+
 ```bash
 npm install
+```
+
+Start the dev server:
+
+```bash
 npm run dev
 ```
 
-Open the local app at:
+Open the app:
 
 ```text
-http://127.0.0.1:8080/chat
+http://localhost:8081/chat
 ```
 
 Run a production build:
@@ -57,7 +96,7 @@ Run a production build:
 npm run build
 ```
 
-Preview the production build locally:
+Preview the production build:
 
 ```bash
 npm run preview
@@ -65,7 +104,7 @@ npm run preview
 
 ## Environment Variables
 
-Create a `.env.local` file for local development:
+Create `.env.local` for local development:
 
 ```env
 MINIMAX_API_KEY=your_minimax_api_key
@@ -73,26 +112,55 @@ MINIMAX_BASE_URL=your_minimax_openai_compatible_base_url
 MINIMAX_MODEL=your_minimax_model
 ```
 
-Never commit real API keys. Configure the same variables in Vercel Project Settings for production.
+Do not commit real API keys. Configure the same variables in Vercel Project Settings for production.
 
 ## Deployment
 
-This project uses TanStack Start SSR and Nitro output for Vercel.
+This project uses TanStack Start SSR with Nitro output for Vercel.
 
 Recommended Vercel settings:
 
 - Framework Preset: TanStack Start, or Other if TanStack Start is not available
 - Build Command: `npm run build`
 - Output Directory: `.output`
-- Root Directory: `.` when this repository root is the project root
+- Root Directory: `.`
 
-The build output is generated under `.output`, including `.output/public` and `.output/server`.
+The production build generates `.output/public` and `.output/server`.
+
+## Current Limitations
+
+- Retrieval is keyword-based, not semantic vector search
+- The knowledge base is edited manually in Markdown files
+- No admin import page yet
+- No Supabase database or pgvector storage yet
+- No user upload flow
+- No question logging or analytics dashboard yet
+- Answers depend on the coverage and freshness of the prepared documents
+
+## Roadmap
+
+### Current Version
+
+- Markdown knowledge base
+- Local search
+- MiniMax answer generation
+- Source references
+- Vercel deployment
+
+### Next
+
+- Admin import page
+- Supabase documents/chunks
+- Question logs
+- Hybrid search
+- Image/OCR import
+- Mainland China-friendly deployment
 
 ## Future Improvements
 
-- Expand the HKUST freshman knowledge base with more official-source-backed documents
-- Add better ranking, synonyms, and multilingual keyword matching
-- Add automated tests for retrieval and `/api/chat`
-- Improve answer formatting for bilingual questions
-- Add admin-only workflows for maintaining the local knowledge base
-- Add monitoring for API errors and missing-knowledge questions
+- Add an admin-only workflow for importing and validating Markdown documents
+- Store documents and chunks in Supabase for easier maintenance
+- Add question logs to identify missing knowledge and improve coverage
+- Upgrade retrieval from keyword search to hybrid search
+- Support image/OCR import for screenshots, PDFs, and public posts
+- Improve deployment options for users in Mainland China
