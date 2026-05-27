@@ -13,6 +13,8 @@ import { Route as ChatRouteImport } from './routes/chat'
 import { Route as AboutRouteImport } from './routes/about'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiChatRouteImport } from './routes/api/chat'
+import { Route as AdminImportRouteImport } from './routes/admin/import'
+import { Route as ApiAdminImportRouteImport } from './routes/api/admin/import'
 
 const ChatRoute = ChatRouteImport.update({
   id: '/chat',
@@ -34,39 +36,76 @@ const ApiChatRoute = ApiChatRouteImport.update({
   path: '/api/chat',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminImportRoute = AdminImportRouteImport.update({
+  id: '/admin/import',
+  path: '/admin/import',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAdminImportRoute = ApiAdminImportRouteImport.update({
+  id: '/api/admin/import',
+  path: '/api/admin/import',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/chat': typeof ChatRoute
+  '/admin/import': typeof AdminImportRoute
   '/api/chat': typeof ApiChatRoute
+  '/api/admin/import': typeof ApiAdminImportRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/chat': typeof ChatRoute
+  '/admin/import': typeof AdminImportRoute
   '/api/chat': typeof ApiChatRoute
+  '/api/admin/import': typeof ApiAdminImportRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/chat': typeof ChatRoute
+  '/admin/import': typeof AdminImportRoute
   '/api/chat': typeof ApiChatRoute
+  '/api/admin/import': typeof ApiAdminImportRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/about' | '/chat' | '/api/chat'
+  fullPaths:
+    | '/'
+    | '/about'
+    | '/chat'
+    | '/admin/import'
+    | '/api/chat'
+    | '/api/admin/import'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/about' | '/chat' | '/api/chat'
-  id: '__root__' | '/' | '/about' | '/chat' | '/api/chat'
+  to:
+    | '/'
+    | '/about'
+    | '/chat'
+    | '/admin/import'
+    | '/api/chat'
+    | '/api/admin/import'
+  id:
+    | '__root__'
+    | '/'
+    | '/about'
+    | '/chat'
+    | '/admin/import'
+    | '/api/chat'
+    | '/api/admin/import'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AboutRoute: typeof AboutRoute
   ChatRoute: typeof ChatRoute
+  AdminImportRoute: typeof AdminImportRoute
   ApiChatRoute: typeof ApiChatRoute
+  ApiAdminImportRoute: typeof ApiAdminImportRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -99,6 +138,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiChatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/import': {
+      id: '/admin/import'
+      path: '/admin/import'
+      fullPath: '/admin/import'
+      preLoaderRoute: typeof AdminImportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/admin/import': {
+      id: '/api/admin/import'
+      path: '/api/admin/import'
+      fullPath: '/api/admin/import'
+      preLoaderRoute: typeof ApiAdminImportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -106,7 +159,9 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AboutRoute: AboutRoute,
   ChatRoute: ChatRoute,
+  AdminImportRoute: AdminImportRoute,
   ApiChatRoute: ApiChatRoute,
+  ApiAdminImportRoute: ApiAdminImportRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
