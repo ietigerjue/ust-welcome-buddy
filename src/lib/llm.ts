@@ -1,17 +1,17 @@
 import type { KnowledgeDocument } from "@/data/knowledgeBase";
 
+const MAX_CONTEXT_DOCUMENTS = 3;
+const MAX_DOCUMENT_CONTENT_LENGTH = 1200;
+
 type GenerateAnswerArgs = {
   question: string;
   contextDocuments: KnowledgeDocument[];
 };
 
-type LlmProvider = "mock" | "minimax";
-
 type LlmConfig = {
-  provider: LlmProvider;
-  minimaxApiKey?: string;
-  minimaxBaseUrl?: string;
-  minimaxModel?: string;
+  apiKey?: string;
+  baseUrl?: string;
+  model?: string;
 };
 
 type ProcessLike = {
@@ -21,40 +21,137 @@ type ProcessLike = {
 function getEnv(name: string) {
   const processEnv = (globalThis as typeof globalThis & { process?: ProcessLike })
     .process?.env?.[name];
-  const value = processEnv ?? import.meta.env[name];
+  const importMetaEnv = (
+    import.meta as ImportMeta & { env?: Record<string, string | undefined> }
+  ).env;
+  const value = processEnv ?? importMetaEnv?.[name];
 
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
 function getLlmConfig(): LlmConfig {
-  const provider = getEnv("LLM_PROVIDER");
-
   return {
-    provider: provider === "minimax" ? "minimax" : "mock",
-    minimaxApiKey: getEnv("MINIMAX_API_KEY"),
-    minimaxBaseUrl: getEnv("MINIMAX_BASE_URL"),
-    minimaxModel: getEnv("MINIMAX_MODEL"),
+    apiKey: getEnv("MINIMAX_API_KEY"),
+    baseUrl: getEnv("MINIMAX_BASE_URL"),
+    model: getEnv("MINIMAX_MODEL"),
   };
 }
+
+function getMissingConfigKeys(config: LlmConfig) {
+  return [
+    ["MINIMAX_API_KEY", config.apiKey],
+    ["MINIMAX_BASE_URL", config.baseUrl],
+    ["MINIMAX_MODEL", config.model],
+  ]
+    .filter(([, value]) => !value)
+    .map(([key]) => key);
+}
+
+function buildContext(contextDocuments: KnowledgeDocument[]) {
+  return contextDocuments
+    .slice(0, MAX_CONTEXT_DOCUMENTS)
+    .map((document, index) => {
+      const content = document.content.slice(0, MAX_DOCUMENT_CONTENT_LENGTH);
+
+      return [
+        `Document ${index + 1}`,
+        `Title: ${document.title}`,
+        `Category: ${document.category}`,
+        `Source: ${document.source}`,
+        `Updated At: ${document.updatedAt}`,
+        `Content: ${content}`,
+      ].join("\n");
+    })
+    .join("\n\n---\n\n");
+}
+
+function getLanguageInstruction(question: string) {
+  const hasChinese = /[\u3400-\u9fff]/.test(question);
+  const hasEnglish = /[a-zA-Z]/.test(question);
+
+  if (hasChinese && hasEnglish) {
+    return "The user mixed Chinese and English. You may answer bilingually.";
+  }
+
+  if (hasChinese) {
+    return "The user asked in Chinese. Answer in Chinese.";
+  }
+
+  return "The user asked in English. Answer in English.";
+}
+
+function sanitizeAnswer(answer: string) {
+  return answer.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+}
+
+const systemPrompt = [
+  "You are UST Buddy, an AI assistant for new HKUST students.",
+  "You must answer only based on the provided contextDocuments.",
+  "Do not invent information outside the knowledge base context.",
+  "If the context is insufficient, clearly say: 当前知识库没有覆盖这个问题。",
+  "Follow the language of the user's question: Chinese questions require Chinese answers, English questions require English answers, and mixed Chinese-English questions may receive mixed answers.",
+  "For official policies, fees, visas, deadlines, academic regulations, housing rules, or similar high-impact topics, remind the user to verify with official HKUST sources.",
+  "Do not reveal chain-of-thought, hidden reasoning, or <think> tags.",
+  "Keep the answer concise.",
+].join("\n");
 
 export async function generateAnswer({
   question,
   contextDocuments,
 }: GenerateAnswerArgs) {
   const config = getLlmConfig();
-  const documentCount = contextDocuments.length;
+  const missingKeys = getMissingConfigKeys(config);
 
-  if (config.provider === "minimax") {
-    return (
-      `我在本地知識庫中找到了 ${documentCount} 篇相關資料。` +
-      "\n\n" +
-      "MiniMax provider is selected, but the real MiniMax API call is not connected yet. This is still a mock answer."
-    );
+  if (missingKeys.length > 0) {
+    return `MiniMax 配置缺失：${missingKeys.join(
+      ", "
+    )}。请在 .env.local 中配置后重启开发服务器。`;
   }
 
-  return (
-    `我在本地知識庫中找到了 ${documentCount} 篇相關資料。` +
-    "\n\n" +
-    `This is a mock answer for: "${question}". The response is generated from local knowledge base matches only; no external LLM API is called.`
-  );
+  const apiKey = config.apiKey ?? "";
+  const baseUrl = config.baseUrl ?? "";
+  const model = config.model ?? "";
+
+  const { default: OpenAI } = await import("openai");
+  const client = new OpenAI({
+    apiKey,
+    baseURL: baseUrl,
+  });
+
+  let completion;
+  try {
+    completion = await client.chat.completions.create({
+      model,
+      temperature: 0.2,
+      max_tokens: 600,
+      messages: [
+        {
+          role: "system",
+          content: systemPrompt,
+        },
+        {
+          role: "user",
+          content: [
+          `Question: ${question}`,
+          "",
+          getLanguageInstruction(question),
+          "",
+          "contextDocuments:",
+          buildContext(contextDocuments),
+        ].join("\n"),
+        },
+      ],
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "unknown error";
+    return `MiniMax 请求失败：${message}`;
+  }
+
+  const answer = sanitizeAnswer(completion.choices[0]?.message?.content ?? "");
+
+  if (!answer) {
+    return "MiniMax 没有返回有效回答，请稍后再试。";
+  }
+
+  return answer;
 }
