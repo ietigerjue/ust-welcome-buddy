@@ -26,7 +26,7 @@ export const Route = createFileRoute("/chat")({
     q: typeof s.q === "string" ? s.q : undefined,
   }),
   head: () => ({
-    meta: [{ title: "Chat — UST Buddy" }],
+    meta: [{ title: "对话 — UST Buddy" }],
   }),
 });
 
@@ -131,7 +131,7 @@ function ChatPage() {
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask UST Buddy anything · 隨便問我"
+              placeholder="问问 UST Buddy：交通、宿舍、注册、缴费..."
               className="w-full bg-transparent px-4 sm:px-5 py-4 pr-16 text-sm outline-none placeholder:text-muted-foreground"
               disabled={sending}
             />
@@ -158,14 +158,13 @@ function EmptyState({ onPick }: { onPick: (q: string) => void }) {
       <div className="flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground mb-4 sm:mb-5">
         <Sparkles className="h-6 w-6" />
       </div>
-      <h1 className="text-2xl font-semibold tracking-tight">Hi, I'm UST Buddy</h1>
-      <p className="mt-2 text-sm text-muted-foreground">你好，我是科大新生小助手</p>
+      <h1 className="text-2xl font-semibold tracking-tight">你好，我是 UST Buddy</h1>
+      <p className="mt-2 text-sm text-muted-foreground">你的 HKUST 新生生活问答助手</p>
       <p className="mt-4 max-w-md text-center text-sm text-muted-foreground">
-        Ask me anything about settling into HKUST — arrival, housing, transport, food,
-        SIM cards, banking, and more.
+        可以问我抵港交通、宿舍准备、电话卡、八达通、校园系统、缴费和新生生活等问题。
       </p>
       <div className="mt-6 sm:mt-8 w-full max-w-xl grid gap-2">
-        <p className="text-xs font-medium text-muted-foreground mb-1">Try asking:</p>
+        <p className="text-xs font-medium text-muted-foreground mb-1">可以这样问：</p>
         {suggestedQuestions.map((q) => (
           <button
             key={q}
@@ -209,7 +208,7 @@ function MessageBubble({ message }: { message: Message }) {
           {message.pending ? (
             <div className="flex items-center gap-2 text-muted-foreground">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              <span className="text-xs">Searching knowledge base…</span>
+              <span className="text-xs">正在检索知识库...</span>
             </div>
           ) : (
             <div className="prose prose-sm max-w-none [&_p]:my-1.5 [&_ul]:my-2 [&_ol]:my-2 [&_li]:my-0.5 whitespace-pre-wrap">
