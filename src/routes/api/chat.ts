@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { searchKnowledgeBase } from "@/lib/searchKnowledgeBase";
+import { generateAnswer } from "@/lib/llm";
 
 type ChatSource = {
   id: string;
@@ -34,11 +35,13 @@ export const Route = createFileRoute("/api/chat")({
           });
         }
 
+        const answer = await generateAnswer({
+          question,
+          contextDocuments: documents,
+        });
+
         return json({
-          answer:
-            `我在本地知識庫中找到了 ${documents.length} 篇相關資料。` +
-            "\n\n" +
-            "This is a mock answer from /api/chat. MiniMax, OpenAI, database, and user upload are not connected.",
+          answer,
           sources: documents.map((document) => ({
             id: document.id,
             title: document.title,
