@@ -143,8 +143,8 @@ function ChatPage() {
               <Send className="h-4 w-4" />
             </button>
           </div>
-          <p className="mt-2 text-center text-[10px] text-muted-foreground">
-            Prototype — answers from mock knowledge base · 原型版本，使用模擬資料
+          <p className="mx-auto mt-2 max-w-2xl text-center text-[10px] leading-relaxed text-muted-foreground">
+            UST Buddy 的回答基于预设新生生活资料，仅供参考。涉及官方政策、截止日期、费用、签证、住宿和学术规定时，请以 HKUST 官方信息为准。
           </p>
         </form>
       </main>
