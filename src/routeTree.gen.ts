@@ -14,7 +14,9 @@ import { Route as AboutRouteImport } from './routes/about'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiChatRouteImport } from './routes/api/chat'
 import { Route as AdminImportRouteImport } from './routes/admin/import'
+import { Route as AdminDocumentsRouteImport } from './routes/admin/documents'
 import { Route as ApiAdminImportRouteImport } from './routes/api/admin/import'
+import { Route as ApiAdminDocumentsRouteImport } from './routes/api/admin/documents'
 
 const ChatRoute = ChatRouteImport.update({
   id: '/chat',
@@ -41,9 +43,19 @@ const AdminImportRoute = AdminImportRouteImport.update({
   path: '/admin/import',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminDocumentsRoute = AdminDocumentsRouteImport.update({
+  id: '/admin/documents',
+  path: '/admin/documents',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAdminImportRoute = ApiAdminImportRouteImport.update({
   id: '/api/admin/import',
   path: '/api/admin/import',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAdminDocumentsRoute = ApiAdminDocumentsRouteImport.update({
+  id: '/api/admin/documents',
+  path: '/api/admin/documents',
   getParentRoute: () => rootRouteImport,
 } as any)
 
@@ -51,16 +63,20 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/chat': typeof ChatRoute
+  '/admin/documents': typeof AdminDocumentsRoute
   '/admin/import': typeof AdminImportRoute
   '/api/chat': typeof ApiChatRoute
+  '/api/admin/documents': typeof ApiAdminDocumentsRoute
   '/api/admin/import': typeof ApiAdminImportRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/chat': typeof ChatRoute
+  '/admin/documents': typeof AdminDocumentsRoute
   '/admin/import': typeof AdminImportRoute
   '/api/chat': typeof ApiChatRoute
+  '/api/admin/documents': typeof ApiAdminDocumentsRoute
   '/api/admin/import': typeof ApiAdminImportRoute
 }
 export interface FileRoutesById {
@@ -68,8 +84,10 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/chat': typeof ChatRoute
+  '/admin/documents': typeof AdminDocumentsRoute
   '/admin/import': typeof AdminImportRoute
   '/api/chat': typeof ApiChatRoute
+  '/api/admin/documents': typeof ApiAdminDocumentsRoute
   '/api/admin/import': typeof ApiAdminImportRoute
 }
 export interface FileRouteTypes {
@@ -78,24 +96,30 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/chat'
+    | '/admin/documents'
     | '/admin/import'
     | '/api/chat'
+    | '/api/admin/documents'
     | '/api/admin/import'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/about'
     | '/chat'
+    | '/admin/documents'
     | '/admin/import'
     | '/api/chat'
+    | '/api/admin/documents'
     | '/api/admin/import'
   id:
     | '__root__'
     | '/'
     | '/about'
     | '/chat'
+    | '/admin/documents'
     | '/admin/import'
     | '/api/chat'
+    | '/api/admin/documents'
     | '/api/admin/import'
   fileRoutesById: FileRoutesById
 }
@@ -103,8 +127,10 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AboutRoute: typeof AboutRoute
   ChatRoute: typeof ChatRoute
+  AdminDocumentsRoute: typeof AdminDocumentsRoute
   AdminImportRoute: typeof AdminImportRoute
   ApiChatRoute: typeof ApiChatRoute
+  ApiAdminDocumentsRoute: typeof ApiAdminDocumentsRoute
   ApiAdminImportRoute: typeof ApiAdminImportRoute
 }
 
@@ -145,11 +171,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminImportRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/documents': {
+      id: '/admin/documents'
+      path: '/admin/documents'
+      fullPath: '/admin/documents'
+      preLoaderRoute: typeof AdminDocumentsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/admin/import': {
       id: '/api/admin/import'
       path: '/api/admin/import'
       fullPath: '/api/admin/import'
       preLoaderRoute: typeof ApiAdminImportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/admin/documents': {
+      id: '/api/admin/documents'
+      path: '/api/admin/documents'
+      fullPath: '/api/admin/documents'
+      preLoaderRoute: typeof ApiAdminDocumentsRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -159,8 +199,10 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AboutRoute: AboutRoute,
   ChatRoute: ChatRoute,
+  AdminDocumentsRoute: AdminDocumentsRoute,
   AdminImportRoute: AdminImportRoute,
   ApiChatRoute: ApiChatRoute,
+  ApiAdminDocumentsRoute: ApiAdminDocumentsRoute,
   ApiAdminImportRoute: ApiAdminImportRoute,
 }
 export const routeTree = rootRouteImport
