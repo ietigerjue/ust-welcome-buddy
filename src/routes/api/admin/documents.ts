@@ -12,6 +12,7 @@ type AdminDocument = {
   status: string | null;
   updated_at: string | null;
   created_at: string | null;
+  keywords: string[];
   chunk_count: number;
 };
 
@@ -82,12 +83,14 @@ export const Route = createFileRoute("/api/admin/documents")({
         if (documentIds.length > 0) {
           const { data: chunks, error: chunksError } = await supabase
             .from("document_chunks")
-            .select("document_id")
+            .select("document_id, keywords")
             .in("document_id", documentIds);
 
           if (chunksError) {
             return json({ error: chunksError.message }, { status: 500 });
           }
+
+          const keywordMap = new Map<string, string[]>();
 
           for (const chunk of chunks ?? []) {
             const documentId =
@@ -98,7 +101,31 @@ export const Route = createFileRoute("/api/admin/documents")({
             }
 
             chunkCounts.set(documentId, (chunkCounts.get(documentId) ?? 0) + 1);
+
+            if (!keywordMap.has(documentId) && Array.isArray(chunk.keywords)) {
+              keywordMap.set(
+                documentId,
+                chunk.keywords.map(String).filter(Boolean)
+              );
+            }
           }
+
+          return json({
+            documents: (documents ?? []).map((document) => ({
+              id: String(document.id),
+              slug: String(document.slug),
+              title: String(document.title),
+              category: String(document.category),
+              source: document.source ?? null,
+              source_url: document.source_url ?? null,
+              source_type: document.source_type ?? null,
+              status: document.status ?? null,
+              updated_at: document.updated_at ?? null,
+              created_at: document.created_at ?? null,
+              keywords: keywordMap.get(String(document.id)) ?? [],
+              chunk_count: chunkCounts.get(String(document.id)) ?? 0,
+            })),
+          });
         }
 
         return json({
@@ -113,6 +140,7 @@ export const Route = createFileRoute("/api/admin/documents")({
             status: document.status ?? null,
             updated_at: document.updated_at ?? null,
             created_at: document.created_at ?? null,
+            keywords: [],
             chunk_count: chunkCounts.get(String(document.id)) ?? 0,
           })),
         });

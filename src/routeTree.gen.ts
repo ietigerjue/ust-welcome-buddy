@@ -15,8 +15,11 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiChatRouteImport } from './routes/api/chat'
 import { Route as AdminImportRouteImport } from './routes/admin/import'
 import { Route as AdminDocumentsRouteImport } from './routes/admin/documents'
+import { Route as ApiAdminParseWechatRouteImport } from './routes/api/admin/parse-wechat'
+import { Route as ApiAdminParseMarkdownRouteImport } from './routes/api/admin/parse-markdown'
 import { Route as ApiAdminImportRouteImport } from './routes/api/admin/import'
 import { Route as ApiAdminDocumentsRouteImport } from './routes/api/admin/documents'
+import { Route as ApiAdminDocumentsIdRouteImport } from './routes/api/admin/documents/$id'
 
 const ChatRoute = ChatRouteImport.update({
   id: '/chat',
@@ -48,6 +51,16 @@ const AdminDocumentsRoute = AdminDocumentsRouteImport.update({
   path: '/admin/documents',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAdminParseWechatRoute = ApiAdminParseWechatRouteImport.update({
+  id: '/api/admin/parse-wechat',
+  path: '/api/admin/parse-wechat',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAdminParseMarkdownRoute = ApiAdminParseMarkdownRouteImport.update({
+  id: '/api/admin/parse-markdown',
+  path: '/api/admin/parse-markdown',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAdminImportRoute = ApiAdminImportRouteImport.update({
   id: '/api/admin/import',
   path: '/api/admin/import',
@@ -58,6 +71,11 @@ const ApiAdminDocumentsRoute = ApiAdminDocumentsRouteImport.update({
   path: '/api/admin/documents',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAdminDocumentsIdRoute = ApiAdminDocumentsIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => ApiAdminDocumentsRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -66,8 +84,11 @@ export interface FileRoutesByFullPath {
   '/admin/documents': typeof AdminDocumentsRoute
   '/admin/import': typeof AdminImportRoute
   '/api/chat': typeof ApiChatRoute
-  '/api/admin/documents': typeof ApiAdminDocumentsRoute
+  '/api/admin/documents': typeof ApiAdminDocumentsRouteWithChildren
   '/api/admin/import': typeof ApiAdminImportRoute
+  '/api/admin/parse-markdown': typeof ApiAdminParseMarkdownRoute
+  '/api/admin/parse-wechat': typeof ApiAdminParseWechatRoute
+  '/api/admin/documents/$id': typeof ApiAdminDocumentsIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -76,8 +97,11 @@ export interface FileRoutesByTo {
   '/admin/documents': typeof AdminDocumentsRoute
   '/admin/import': typeof AdminImportRoute
   '/api/chat': typeof ApiChatRoute
-  '/api/admin/documents': typeof ApiAdminDocumentsRoute
+  '/api/admin/documents': typeof ApiAdminDocumentsRouteWithChildren
   '/api/admin/import': typeof ApiAdminImportRoute
+  '/api/admin/parse-markdown': typeof ApiAdminParseMarkdownRoute
+  '/api/admin/parse-wechat': typeof ApiAdminParseWechatRoute
+  '/api/admin/documents/$id': typeof ApiAdminDocumentsIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -87,8 +111,11 @@ export interface FileRoutesById {
   '/admin/documents': typeof AdminDocumentsRoute
   '/admin/import': typeof AdminImportRoute
   '/api/chat': typeof ApiChatRoute
-  '/api/admin/documents': typeof ApiAdminDocumentsRoute
+  '/api/admin/documents': typeof ApiAdminDocumentsRouteWithChildren
   '/api/admin/import': typeof ApiAdminImportRoute
+  '/api/admin/parse-markdown': typeof ApiAdminParseMarkdownRoute
+  '/api/admin/parse-wechat': typeof ApiAdminParseWechatRoute
+  '/api/admin/documents/$id': typeof ApiAdminDocumentsIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -101,6 +128,9 @@ export interface FileRouteTypes {
     | '/api/chat'
     | '/api/admin/documents'
     | '/api/admin/import'
+    | '/api/admin/parse-markdown'
+    | '/api/admin/parse-wechat'
+    | '/api/admin/documents/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -111,6 +141,9 @@ export interface FileRouteTypes {
     | '/api/chat'
     | '/api/admin/documents'
     | '/api/admin/import'
+    | '/api/admin/parse-markdown'
+    | '/api/admin/parse-wechat'
+    | '/api/admin/documents/$id'
   id:
     | '__root__'
     | '/'
@@ -121,6 +154,9 @@ export interface FileRouteTypes {
     | '/api/chat'
     | '/api/admin/documents'
     | '/api/admin/import'
+    | '/api/admin/parse-markdown'
+    | '/api/admin/parse-wechat'
+    | '/api/admin/documents/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -130,8 +166,10 @@ export interface RootRouteChildren {
   AdminDocumentsRoute: typeof AdminDocumentsRoute
   AdminImportRoute: typeof AdminImportRoute
   ApiChatRoute: typeof ApiChatRoute
-  ApiAdminDocumentsRoute: typeof ApiAdminDocumentsRoute
+  ApiAdminDocumentsRoute: typeof ApiAdminDocumentsRouteWithChildren
   ApiAdminImportRoute: typeof ApiAdminImportRoute
+  ApiAdminParseMarkdownRoute: typeof ApiAdminParseMarkdownRoute
+  ApiAdminParseWechatRoute: typeof ApiAdminParseWechatRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -178,6 +216,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminDocumentsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/admin/parse-wechat': {
+      id: '/api/admin/parse-wechat'
+      path: '/api/admin/parse-wechat'
+      fullPath: '/api/admin/parse-wechat'
+      preLoaderRoute: typeof ApiAdminParseWechatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/admin/parse-markdown': {
+      id: '/api/admin/parse-markdown'
+      path: '/api/admin/parse-markdown'
+      fullPath: '/api/admin/parse-markdown'
+      preLoaderRoute: typeof ApiAdminParseMarkdownRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/admin/import': {
       id: '/api/admin/import'
       path: '/api/admin/import'
@@ -192,8 +244,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAdminDocumentsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/admin/documents/$id': {
+      id: '/api/admin/documents/$id'
+      path: '/$id'
+      fullPath: '/api/admin/documents/$id'
+      preLoaderRoute: typeof ApiAdminDocumentsIdRouteImport
+      parentRoute: typeof ApiAdminDocumentsRoute
+    }
   }
 }
+
+interface ApiAdminDocumentsRouteChildren {
+  ApiAdminDocumentsIdRoute: typeof ApiAdminDocumentsIdRoute
+}
+
+const ApiAdminDocumentsRouteChildren: ApiAdminDocumentsRouteChildren = {
+  ApiAdminDocumentsIdRoute: ApiAdminDocumentsIdRoute,
+}
+
+const ApiAdminDocumentsRouteWithChildren =
+  ApiAdminDocumentsRoute._addFileChildren(ApiAdminDocumentsRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
@@ -202,8 +272,10 @@ const rootRouteChildren: RootRouteChildren = {
   AdminDocumentsRoute: AdminDocumentsRoute,
   AdminImportRoute: AdminImportRoute,
   ApiChatRoute: ApiChatRoute,
-  ApiAdminDocumentsRoute: ApiAdminDocumentsRoute,
+  ApiAdminDocumentsRoute: ApiAdminDocumentsRouteWithChildren,
   ApiAdminImportRoute: ApiAdminImportRoute,
+  ApiAdminParseMarkdownRoute: ApiAdminParseMarkdownRoute,
+  ApiAdminParseWechatRoute: ApiAdminParseWechatRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

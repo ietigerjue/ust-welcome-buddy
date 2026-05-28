@@ -1,14 +1,55 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
-import { BookOpen, CheckCircle2, Loader2, UploadCloud, XCircle } from "lucide-react";
+import {
+  BookOpen,
+  CheckCircle2,
+  FileText,
+  Loader2,
+  UploadCloud,
+  XCircle,
+} from "lucide-react";
 import { SiteNav } from "@/components/site-nav";
 
 type ImportStatus = "idle" | "importing" | "success" | "error";
+type ParseStatus = "idle" | "parsing" | "success" | "error";
+type WeChatParseStatus = "idle" | "parsing" | "success" | "error";
+
+const CATEGORY_OPTIONS = [
+  "arrival",
+  "housing",
+  "transport",
+  "life",
+  "academic",
+  "food",
+  "shopping",
+  "official",
+  "course",
+  "other",
+];
 
 type ImportResult = {
   documentId?: string;
   slug?: string;
   chunkCount?: number;
+  error?: string;
+};
+
+type ParseMarkdownResult = {
+  metadata?: Record<string, unknown>;
+  content?: string;
+  error?: string;
+};
+
+type ParseWeChatResult = {
+  title?: string;
+  category?: string;
+  source?: string;
+  source_url?: string;
+  source_type?: string;
+  updatedAt?: string;
+  keywords?: string[];
+  summary?: string;
+  content?: string;
   error?: string;
 };
 
@@ -26,16 +67,152 @@ function parseKeywords(value: string) {
     .filter(Boolean);
 }
 
+function metadataString(value: unknown) {
+  if (value instanceof Date) {
+    return value.toISOString().slice(0, 10);
+  }
+
+  return typeof value === "string" || typeof value === "number"
+    ? String(value).trim()
+    : "";
+}
+
+function metadataKeywords(value: unknown) {
+  if (Array.isArray(value)) {
+    return value.map(String).map((keyword) => keyword.trim()).filter(Boolean);
+  }
+
+  if (typeof value === "string") {
+    return parseKeywords(value);
+  }
+
+  return [];
+}
+
 function AdminImportPage() {
   const [adminToken, setAdminToken] = useState("");
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("");
   const [source, setSource] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
+  const [updatedAt, setUpdatedAt] = useState("");
   const [keywords, setKeywords] = useState("");
   const [content, setContent] = useState("");
   const [status, setStatus] = useState<ImportStatus>("idle");
   const [result, setResult] = useState<ImportResult | null>(null);
+  const [parseStatus, setParseStatus] = useState<ParseStatus>("idle");
+  const [parseMessage, setParseMessage] = useState("");
+  const [wechatSourceUrl, setWechatSourceUrl] = useState("");
+  const [wechatRawContent, setWechatRawContent] = useState("");
+  const [wechatParseStatus, setWechatParseStatus] =
+    useState<WeChatParseStatus>("idle");
+  const [wechatParseMessage, setWechatParseMessage] = useState("");
+
+  async function handleMarkdownFile(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    setParseStatus("parsing");
+    setParseMessage("");
+    setResult(null);
+
+    if (!file.name.toLowerCase().endsWith(".md")) {
+      setParseStatus("error");
+      setParseMessage("仅支持 .md 文件。");
+      event.target.value = "";
+      return;
+    }
+
+    try {
+      const markdown = await file.text();
+      const response = await fetch("/api/admin/parse-markdown", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-admin-token": adminToken,
+        },
+        body: JSON.stringify({ markdown, filename: file.name }),
+      });
+      const data = (await response.json().catch(() => ({}))) as ParseMarkdownResult;
+
+      if (!response.ok) {
+        throw new Error(data.error || "Markdown parse failed.");
+      }
+
+      const metadata = data.metadata ?? {};
+      const parsedKeywords = metadataKeywords(metadata.keywords);
+
+      setTitle(metadataString(metadata.title));
+      setCategory(metadataString(metadata.category));
+      setSource(metadataString(metadata.source));
+      setSourceUrl(
+        metadataString(metadata.source_url) || metadataString(metadata.sourceUrl)
+      );
+      setUpdatedAt(
+        metadataString(metadata.updatedAt) || metadataString(metadata.updated_at)
+      );
+      setKeywords(parsedKeywords.join(", "));
+      setContent(data.content ?? "");
+      setParseStatus("success");
+      setParseMessage(
+        `已解析 ${file.name}，请检查表单内容后再点击 Import。`
+      );
+    } catch (error) {
+      setParseStatus("error");
+      setParseMessage(
+        error instanceof Error ? error.message : "Markdown parse failed."
+      );
+    } finally {
+      event.target.value = "";
+    }
+  }
+
+  async function handleParseWeChatArticle() {
+    setWechatParseStatus("parsing");
+    setWechatParseMessage("");
+    setResult(null);
+
+    try {
+      const response = await fetch("/api/admin/parse-wechat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-admin-token": adminToken,
+        },
+        body: JSON.stringify({
+          rawContent: wechatRawContent,
+          source_url: wechatSourceUrl,
+        }),
+      });
+      const data = (await response.json().catch(() => ({}))) as ParseWeChatResult;
+
+      if (!response.ok) {
+        throw new Error(data.error || "WeChat article parse failed.");
+      }
+
+      if (!data.content?.trim()) {
+        throw new Error("解析成功但正文为空，请检查粘贴内容。");
+      }
+
+      setTitle(metadataString(data.title));
+      setCategory(metadataString(data.category));
+      setSource(metadataString(data.source));
+      setSourceUrl(metadataString(data.source_url));
+      setUpdatedAt(metadataString(data.updatedAt));
+      setKeywords(metadataKeywords(data.keywords).join(", "));
+      setContent(data.content ?? "");
+      setWechatParseStatus("success");
+      setWechatParseMessage("公众号文章已解析，请检查表单内容后再点击 Import。");
+    } catch (error) {
+      setWechatParseStatus("error");
+      setWechatParseMessage(
+        error instanceof Error ? error.message : "WeChat article parse failed."
+      );
+    }
+  }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -54,6 +231,7 @@ function AdminImportPage() {
           category,
           source,
           source_url: sourceUrl,
+          updated_at: updatedAt,
           keywords: parseKeywords(keywords),
           content,
         }),
@@ -109,14 +287,112 @@ function AdminImportPage() {
               />
             </Field>
 
+            <div className="sm:col-span-2 rounded-lg border border-dashed border-border bg-background/60 p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="inline-flex items-center gap-2 text-sm font-medium">
+                    <FileText className="h-4 w-4 text-primary" />
+                    上传 Markdown 文件
+                  </div>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                    选择 .md 文件后，前端只读取文本并发送到后端解析
+                    frontmatter。解析完成后会自动填充表单，但不会自动导入。
+                  </p>
+                </div>
+                <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-md border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted">
+                  <UploadCloud className="h-4 w-4" />
+                  Choose .md
+                  <input
+                    type="file"
+                    accept=".md,text/markdown"
+                    onChange={handleMarkdownFile}
+                    className="sr-only"
+                  />
+                </label>
+              </div>
+              <ParseStatusMessage status={parseStatus} message={parseMessage} />
+            </div>
+
+            <div className="sm:col-span-2 rounded-lg border border-dashed border-border bg-background/60 p-4">
+              <div className="flex flex-col gap-3">
+                <div>
+                  <div className="inline-flex items-center gap-2 text-sm font-medium">
+                    <FileText className="h-4 w-4 text-primary" />
+                    WeChat Article Paste
+                  </div>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                    粘贴公众号正文、纯文本或 HTML，系统会清洗正文并生成 metadata。
+                    解析完成后只填充下方表单，不会自动导入数据库。
+                  </p>
+                </div>
+
+                <div className="grid gap-3">
+                  <label className="grid gap-1.5">
+                    <span className="text-xs font-medium text-muted-foreground">
+                      Source URL
+                    </span>
+                    <input
+                      value={wechatSourceUrl}
+                      onChange={(event) => setWechatSourceUrl(event.target.value)}
+                      className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/10"
+                      placeholder="https://mp.weixin.qq.com/s/..."
+                    />
+                  </label>
+
+                  <label className="grid gap-1.5">
+                    <span className="text-xs font-medium text-muted-foreground">
+                      Raw Content
+                    </span>
+                    <textarea
+                      value={wechatRawContent}
+                      onChange={(event) => setWechatRawContent(event.target.value)}
+                      className="min-h-[160px] w-full resize-y rounded-md border border-border bg-background px-3 py-2 text-sm leading-relaxed outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/10"
+                      placeholder="粘贴公众号文章正文、富文本 HTML 或纯文本..."
+                    />
+                  </label>
+
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <WeChatParseStatusMessage
+                      status={wechatParseStatus}
+                      message={wechatParseMessage}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleParseWeChatArticle}
+                      disabled={
+                        wechatParseStatus === "parsing" ||
+                        !wechatRawContent.trim()
+                      }
+                      className="inline-flex items-center justify-center gap-2 rounded-md border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {wechatParseStatus === "parsing" ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <UploadCloud className="h-4 w-4" />
+                      )}
+                      Parse WeChat Article
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <Field label="Category" required>
-              <input
+              <select
                 value={category}
                 onChange={(event) => setCategory(event.target.value)}
                 className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/10"
-                placeholder="例如 Academic Systems"
                 required
-              />
+              >
+                <option value="" disabled>
+                  选择 category
+                </option>
+                {CATEGORY_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
             </Field>
 
             <Field label="Title" required className="sm:col-span-2">
@@ -147,7 +423,16 @@ function AdminImportPage() {
               />
             </Field>
 
-            <Field label="Keywords" className="sm:col-span-2">
+            <Field label="Updated At">
+              <input
+                value={updatedAt}
+                onChange={(event) => setUpdatedAt(event.target.value)}
+                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/10"
+                placeholder="YYYY-MM-DD"
+              />
+            </Field>
+
+            <Field label="Keywords">
               <input
                 value={keywords}
                 onChange={(event) => setKeywords(event.target.value)}
@@ -207,6 +492,88 @@ function Field({
       </span>
       {children}
     </label>
+  );
+}
+
+function ParseStatusMessage({
+  status,
+  message,
+}: {
+  status: ParseStatus;
+  message: string;
+}) {
+  if (status === "idle") {
+    return (
+      <p className="mt-3 text-xs text-muted-foreground">
+        状态：等待选择 Markdown 文件
+      </p>
+    );
+  }
+
+  if (status === "parsing") {
+    return (
+      <p className="mt-3 inline-flex items-center gap-2 text-xs text-muted-foreground">
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        parsing markdown...
+      </p>
+    );
+  }
+
+  if (status === "success") {
+    return (
+      <p className="mt-3 inline-flex items-center gap-2 text-xs text-primary">
+        <CheckCircle2 className="h-3.5 w-3.5" />
+        {message}
+      </p>
+    );
+  }
+
+  return (
+    <p className="mt-3 inline-flex items-center gap-2 text-xs text-destructive">
+      <XCircle className="h-3.5 w-3.5" />
+      {message || "Markdown parse failed."}
+    </p>
+  );
+}
+
+function WeChatParseStatusMessage({
+  status,
+  message,
+}: {
+  status: WeChatParseStatus;
+  message: string;
+}) {
+  if (status === "idle") {
+    return (
+      <p className="text-xs text-muted-foreground">
+        状态：等待粘贴公众号正文
+      </p>
+    );
+  }
+
+  if (status === "parsing") {
+    return (
+      <p className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        parsing wechat article...
+      </p>
+    );
+  }
+
+  if (status === "success") {
+    return (
+      <p className="inline-flex items-center gap-2 text-xs text-primary">
+        <CheckCircle2 className="h-3.5 w-3.5" />
+        {message}
+      </p>
+    );
+  }
+
+  return (
+    <p className="inline-flex items-center gap-2 text-xs text-destructive">
+      <XCircle className="h-3.5 w-3.5" />
+      {message || "WeChat article parse failed."}
+    </p>
   );
 }
 

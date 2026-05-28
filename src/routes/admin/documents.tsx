@@ -1,12 +1,16 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { Fragment as ReactFragment, useState } from "react";
 import {
   ArrowRight,
   Database,
   ExternalLink,
   FileText,
   Loader2,
+  Pencil,
   RefreshCw,
+  Save,
+  Trash2,
+  X,
   XCircle,
 } from "lucide-react";
 import { SiteNav } from "@/components/site-nav";
@@ -24,12 +28,26 @@ type AdminDocument = {
   status: string | null;
   updated_at: string | null;
   created_at: string | null;
+  keywords: string[];
   chunk_count: number;
 };
 
 type DocumentsResponse = {
   documents?: AdminDocument[];
   error?: string;
+};
+
+type ActionResponse = {
+  success?: boolean;
+  error?: string;
+};
+
+type EditFormState = {
+  title: string;
+  category: string;
+  source: string;
+  source_url: string;
+  keywords: string;
 };
 
 export const Route = createFileRoute("/admin/documents")({
@@ -39,15 +57,35 @@ export const Route = createFileRoute("/admin/documents")({
   }),
 });
 
+function parseKeywords(value: string) {
+  return value
+    .split(",")
+    .map((keyword) => keyword.trim())
+    .filter(Boolean);
+}
+
 function AdminDocumentsPage() {
   const [adminToken, setAdminToken] = useState("");
   const [status, setStatus] = useState<LoadStatus>("idle");
   const [documents, setDocuments] = useState<AdminDocument[]>([]);
   const [errorMessage, setErrorMessage] = useState("");
+  const [actionMessage, setActionMessage] = useState("");
+  const [busyDocumentId, setBusyDocumentId] = useState("");
+  const [editingDocumentId, setEditingDocumentId] = useState("");
+  const [editForm, setEditForm] = useState<EditFormState>({
+    title: "",
+    category: "",
+    source: "",
+    source_url: "",
+    keywords: "",
+  });
 
-  async function loadDocuments() {
+  async function loadDocuments({ clearActionMessage = true } = {}) {
     setStatus("loading");
     setErrorMessage("");
+    if (clearActionMessage) {
+      setActionMessage("");
+    }
 
     try {
       const response = await fetch("/api/admin/documents", {
@@ -76,6 +114,112 @@ function AdminDocumentsPage() {
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     void loadDocuments();
+  }
+
+  function startEdit(document: AdminDocument) {
+    setActionMessage("");
+    setEditingDocumentId(document.id);
+    setEditForm({
+      title: document.title,
+      category: document.category,
+      source: document.source ?? "",
+      source_url: document.source_url ?? "",
+      keywords: document.keywords.join(", "),
+    });
+  }
+
+  function cancelEdit() {
+    setEditingDocumentId("");
+    setEditForm({
+      title: "",
+      category: "",
+      source: "",
+      source_url: "",
+      keywords: "",
+    });
+  }
+
+  async function deleteDocument(document: AdminDocument) {
+    const confirmed = window.confirm(
+      `确认删除「${document.title}」吗？对应的 document_chunks 会通过 Supabase cascade 一起删除。`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setBusyDocumentId(document.id);
+    setActionMessage("");
+
+    try {
+      const response = await fetch(
+        `/api/admin/documents/${encodeURIComponent(document.id)}`,
+        {
+          method: "DELETE",
+          headers: {
+            "x-admin-token": adminToken,
+          },
+        }
+      );
+      const data = (await response.json().catch(() => ({}))) as ActionResponse;
+
+      if (!response.ok) {
+        throw new Error(data.error || "Delete failed.");
+      }
+
+      setActionMessage(`Deleted: ${document.title}`);
+      await loadDocuments({ clearActionMessage: false });
+    } catch (error) {
+      setActionMessage(
+        `Delete error: ${
+          error instanceof Error ? error.message : "Delete failed."
+        }`
+      );
+    } finally {
+      setBusyDocumentId("");
+    }
+  }
+
+  async function saveDocument(document: AdminDocument) {
+    setBusyDocumentId(document.id);
+    setActionMessage("");
+
+    try {
+      const response = await fetch(
+        `/api/admin/documents/${encodeURIComponent(document.id)}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            "x-admin-token": adminToken,
+          },
+          body: JSON.stringify({
+            title: editForm.title,
+            category: editForm.category,
+            source: editForm.source,
+            source_url: editForm.source_url,
+            keywords: parseKeywords(editForm.keywords),
+          }),
+        }
+      );
+      const data = (await response.json().catch(() => ({}))) as ActionResponse;
+
+      if (!response.ok) {
+        throw new Error(data.error || "Update failed.");
+      }
+
+      setActionMessage(`Updated: ${editForm.title}`);
+      cancelEdit();
+      await loadDocuments({ clearActionMessage: false });
+    } catch (error) {
+      setActionMessage(
+        `Update error: ${
+          error instanceof Error ? error.message : "Update failed."
+        }`
+      );
+    } finally {
+      setBusyDocumentId("");
+    }
   }
 
   return (
@@ -145,6 +289,17 @@ function AdminDocumentsPage() {
             count={documents.length}
             errorMessage={errorMessage}
           />
+          {actionMessage ? (
+            <p
+              className={`mt-2 text-xs ${
+                actionMessage.includes("error")
+                  ? "text-destructive"
+                  : "text-muted-foreground"
+              }`}
+            >
+              {actionMessage}
+            </p>
+          ) : null}
         </section>
 
         <section className="mt-6">
@@ -154,8 +309,9 @@ function AdminDocumentsPage() {
 
           {documents.length > 0 ? (
             <>
-              <div className="hidden overflow-hidden rounded-lg border border-border bg-card shadow-sm md:block">
-                <table className="w-full text-left text-sm">
+              <div className="hidden rounded-lg border border-border bg-card shadow-sm md:block">
+                <div className="overflow-x-auto">
+                  <table className="min-w-[1180px] w-full text-left text-sm">
                   <thead className="border-b border-border bg-muted/50 text-xs text-muted-foreground">
                     <tr>
                       <TableHeader>Title</TableHeader>
@@ -166,36 +322,62 @@ function AdminDocumentsPage() {
                       <TableHeader>Updated</TableHeader>
                       <TableHeader>Created</TableHeader>
                       <TableHeader className="text-right">Chunks</TableHeader>
+                      <TableHeader className="text-right">Actions</TableHeader>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
                     {documents.map((document) => (
-                      <tr key={document.id} className="align-top">
-                        <TableCell>
-                          <div className="font-medium text-foreground">
-                            {document.title}
-                          </div>
-                          <div className="mt-1 max-w-[280px] truncate text-xs text-muted-foreground">
-                            {document.slug}
-                          </div>
-                        </TableCell>
-                        <TableCell>{document.category}</TableCell>
-                        <TableCell>
-                          <SourceValue document={document} />
-                        </TableCell>
-                        <TableCell>{document.source_type || "—"}</TableCell>
-                        <TableCell>
-                          <StatusBadge value={document.status} />
-                        </TableCell>
-                        <TableCell>{formatDate(document.updated_at)}</TableCell>
-                        <TableCell>{formatDateTime(document.created_at)}</TableCell>
-                        <TableCell className="text-right font-medium">
-                          {document.chunk_count}
-                        </TableCell>
-                      </tr>
+                      <ReactFragment key={document.id}>
+                        <tr className="align-top">
+                          <TableCell>
+                            <div className="font-medium text-foreground">
+                              {document.title}
+                            </div>
+                            <div className="mt-1 max-w-[280px] truncate text-xs text-muted-foreground">
+                              {document.slug}
+                            </div>
+                          </TableCell>
+                          <TableCell>{document.category}</TableCell>
+                          <TableCell>
+                            <SourceValue document={document} />
+                          </TableCell>
+                          <TableCell>{document.source_type || "—"}</TableCell>
+                          <TableCell>
+                            <StatusBadge value={document.status} />
+                          </TableCell>
+                          <TableCell>{formatDate(document.updated_at)}</TableCell>
+                          <TableCell>{formatDateTime(document.created_at)}</TableCell>
+                          <TableCell className="text-right font-medium">
+                            {document.chunk_count}
+                          </TableCell>
+                          <TableCell>
+                            <DocumentActions
+                              document={document}
+                              busyDocumentId={busyDocumentId}
+                              isEditing={editingDocumentId === document.id}
+                              onEdit={() => startEdit(document)}
+                              onDelete={() => void deleteDocument(document)}
+                            />
+                          </TableCell>
+                        </tr>
+                        {editingDocumentId === document.id ? (
+                          <tr>
+                            <td colSpan={9} className="bg-muted/20 px-4 py-4">
+                              <EditDocumentForm
+                                form={editForm}
+                                setForm={setEditForm}
+                                isSaving={busyDocumentId === document.id}
+                                onCancel={cancelEdit}
+                                onSave={() => void saveDocument(document)}
+                              />
+                            </td>
+                          </tr>
+                        ) : null}
+                      </ReactFragment>
                     ))}
                   </tbody>
-                </table>
+                  </table>
+                </div>
               </div>
 
               <div className="grid gap-3 md:hidden">
@@ -239,6 +421,28 @@ function AdminDocumentsPage() {
                         </dd>
                       </div>
                     </dl>
+
+                    <div className="mt-4 border-t border-border pt-4">
+                      <DocumentActions
+                        document={document}
+                        busyDocumentId={busyDocumentId}
+                        isEditing={editingDocumentId === document.id}
+                        onEdit={() => startEdit(document)}
+                        onDelete={() => void deleteDocument(document)}
+                      />
+                    </div>
+
+                    {editingDocumentId === document.id ? (
+                      <div className="mt-4 rounded-md border border-border bg-muted/20 p-3">
+                        <EditDocumentForm
+                          form={editForm}
+                          setForm={setEditForm}
+                          isSaving={busyDocumentId === document.id}
+                          onCancel={cancelEdit}
+                          onSave={() => void saveDocument(document)}
+                        />
+                      </div>
+                    ) : null}
                   </article>
                 ))}
               </div>
@@ -247,6 +451,167 @@ function AdminDocumentsPage() {
         </section>
       </main>
     </div>
+  );
+}
+
+function DocumentActions({
+  document,
+  busyDocumentId,
+  isEditing,
+  onEdit,
+  onDelete,
+}: {
+  document: AdminDocument;
+  busyDocumentId: string;
+  isEditing: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const isBusy = busyDocumentId === document.id;
+
+  return (
+    <div className="flex flex-wrap justify-end gap-2">
+      <button
+        type="button"
+        onClick={onEdit}
+        disabled={isBusy || isEditing}
+        className="inline-flex items-center justify-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        <Pencil className="h-3.5 w-3.5" />
+        Edit
+      </button>
+      <button
+        type="button"
+        onClick={onDelete}
+        disabled={isBusy}
+        className="inline-flex items-center justify-center gap-1.5 rounded-md border border-destructive/30 bg-background px-3 py-1.5 text-xs font-medium text-destructive transition-colors hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {isBusy ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : (
+          <Trash2 className="h-3.5 w-3.5" />
+        )}
+        Delete
+      </button>
+    </div>
+  );
+}
+
+function EditDocumentForm({
+  form,
+  setForm,
+  isSaving,
+  onCancel,
+  onSave,
+}: {
+  form: EditFormState;
+  setForm: React.Dispatch<React.SetStateAction<EditFormState>>;
+  isSaving: boolean;
+  onCancel: () => void;
+  onSave: () => void;
+}) {
+  function updateField(field: keyof EditFormState, value: string) {
+    setForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    onSave();
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="grid gap-4">
+      <div className="grid gap-3 lg:grid-cols-2">
+        <EditField label="Title" required>
+          <input
+            value={form.title}
+            onChange={(event) => updateField("title", event.target.value)}
+            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/10"
+            required
+          />
+        </EditField>
+        <EditField label="Category" required>
+          <input
+            value={form.category}
+            onChange={(event) => updateField("category", event.target.value)}
+            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/10"
+            required
+          />
+        </EditField>
+        <EditField label="Source">
+          <input
+            value={form.source}
+            onChange={(event) => updateField("source", event.target.value)}
+            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/10"
+          />
+        </EditField>
+        <EditField label="Source URL">
+          <input
+            value={form.source_url}
+            onChange={(event) => updateField("source_url", event.target.value)}
+            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/10"
+            placeholder="https://..."
+          />
+        </EditField>
+        <EditField label="Keywords" className="lg:col-span-2">
+          <input
+            value={form.keywords}
+            onChange={(event) => updateField("keywords", event.target.value)}
+            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/10"
+            placeholder="逗号分隔，例如 选课, course enrollment, SIS"
+          />
+        </EditField>
+      </div>
+
+      <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={isSaving}
+          className="inline-flex items-center justify-center gap-1.5 rounded-md border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <X className="h-4 w-4" />
+          Cancel
+        </button>
+        <button
+          type="submit"
+          disabled={isSaving}
+          className="inline-flex items-center justify-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {isSaving ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Save className="h-4 w-4" />
+          )}
+          Save
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function EditField({
+  label,
+  required,
+  className = "",
+  children,
+}: {
+  label: string;
+  required?: boolean;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className={`grid gap-1.5 ${className}`}>
+      <span className="text-xs font-medium text-muted-foreground">
+        {label}
+        {required ? <span className="text-destructive"> *</span> : null}
+      </span>
+      {children}
+    </label>
   );
 }
 

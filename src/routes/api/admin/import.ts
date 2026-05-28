@@ -9,6 +9,8 @@ type ImportPayload = {
   category?: unknown;
   source?: unknown;
   source_url?: unknown;
+  updatedAt?: unknown;
+  updated_at?: unknown;
   keywords?: unknown;
   content?: unknown;
 };
@@ -95,6 +97,30 @@ function generateSlug(title: string) {
 
 function getTodayDate() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function normalizeDate(value: unknown) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString().slice(0, 10);
+  }
+
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  const text = value.trim();
+
+  if (!text) {
+    return "";
+  }
+
+  const parsed = new Date(text);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return text;
+  }
+
+  return parsed.toISOString().slice(0, 10);
 }
 
 function splitLongBlock(block: string) {
@@ -221,7 +247,10 @@ export const Route = createFileRoute("/api/admin/import")({
         const keywords = normalizeKeywords(body.keywords);
         const slug = generateSlug(title);
         const chunks = chunkContent(content);
-        const updatedAt = getTodayDate();
+        const updatedAt =
+          normalizeDate(body.updated_at) ||
+          normalizeDate(body.updatedAt) ||
+          getTodayDate();
 
         const { data: upsertedDocument, error: documentError } = await supabase
           .from("documents")
