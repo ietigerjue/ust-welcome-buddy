@@ -4,6 +4,7 @@ import {
   BookOpen,
   CheckCircle2,
   FileText,
+  ImageIcon,
   Loader2,
   UploadCloud,
   XCircle,
@@ -13,6 +14,7 @@ import { SiteNav } from "@/components/site-nav";
 type ImportStatus = "idle" | "importing" | "success" | "error";
 type ParseStatus = "idle" | "parsing" | "success" | "error";
 type WeChatParseStatus = "idle" | "parsing" | "success" | "error";
+type ImageParseStatus = "idle" | "parsing" | "success" | "error";
 
 const CATEGORY_OPTIONS = [
   "arrival",
@@ -41,6 +43,19 @@ type ParseMarkdownResult = {
 };
 
 type ParseWeChatResult = {
+  title?: string;
+  category?: string;
+  source?: string;
+  source_url?: string;
+  source_type?: string;
+  updatedAt?: string;
+  keywords?: string[];
+  summary?: string;
+  content?: string;
+  error?: string;
+};
+
+type ParseImageResult = {
   title?: string;
   category?: string;
   source?: string;
@@ -89,14 +104,28 @@ function metadataKeywords(value: unknown) {
   return [];
 }
 
+function formatFileSize(size: number) {
+  if (size < 1024) {
+    return `${size} B`;
+  }
+
+  if (size < 1024 * 1024) {
+    return `${(size / 1024).toFixed(1)} KB`;
+  }
+
+  return `${(size / 1024 / 1024).toFixed(1)} MB`;
+}
+
 function AdminImportPage() {
   const [adminToken, setAdminToken] = useState("");
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("");
   const [source, setSource] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
+  const [sourceType, setSourceType] = useState("");
   const [updatedAt, setUpdatedAt] = useState("");
   const [keywords, setKeywords] = useState("");
+  const [summary, setSummary] = useState("");
   const [content, setContent] = useState("");
   const [status, setStatus] = useState<ImportStatus>("idle");
   const [result, setResult] = useState<ImportResult | null>(null);
@@ -107,6 +136,11 @@ function AdminImportPage() {
   const [wechatParseStatus, setWechatParseStatus] =
     useState<WeChatParseStatus>("idle");
   const [wechatParseMessage, setWechatParseMessage] = useState("");
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imageSourceUrl, setImageSourceUrl] = useState("");
+  const [imageParseStatus, setImageParseStatus] =
+    useState<ImageParseStatus>("idle");
+  const [imageParseMessage, setImageParseMessage] = useState("");
 
   async function handleMarkdownFile(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -151,10 +185,12 @@ function AdminImportPage() {
       setSourceUrl(
         metadataString(metadata.source_url) || metadataString(metadata.sourceUrl)
       );
+      setSourceType(metadataString(metadata.source_type));
       setUpdatedAt(
         metadataString(metadata.updatedAt) || metadataString(metadata.updated_at)
       );
       setKeywords(parsedKeywords.join(", "));
+      setSummary(metadataString(metadata.summary));
       setContent(data.content ?? "");
       setParseStatus("success");
       setParseMessage(
@@ -201,8 +237,10 @@ function AdminImportPage() {
       setCategory(metadataString(data.category));
       setSource(metadataString(data.source));
       setSourceUrl(metadataString(data.source_url));
+      setSourceType(metadataString(data.source_type));
       setUpdatedAt(metadataString(data.updatedAt));
       setKeywords(metadataKeywords(data.keywords).join(", "));
+      setSummary(metadataString(data.summary));
       setContent(data.content ?? "");
       setWechatParseStatus("success");
       setWechatParseMessage("公众号文章已解析，请检查表单内容后再点击 Import。");
@@ -210,6 +248,82 @@ function AdminImportPage() {
       setWechatParseStatus("error");
       setWechatParseMessage(
         error instanceof Error ? error.message : "WeChat article parse failed."
+      );
+    }
+  }
+
+  function handleImageFile(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0] ?? null;
+
+    setImageParseStatus("idle");
+    setImageParseMessage("");
+
+    if (!file) {
+      setImageFile(null);
+      return;
+    }
+
+    const allowedTypes = ["image/png", "image/jpeg", "image/webp"];
+
+    if (!allowedTypes.includes(file.type)) {
+      setImageFile(null);
+      setImageParseStatus("error");
+      setImageParseMessage("仅支持 .png、.jpg、.jpeg、.webp 图片。");
+      event.target.value = "";
+      return;
+    }
+
+    setImageFile(file);
+  }
+
+  async function handleParseImage() {
+    if (!imageFile) {
+      setImageParseStatus("error");
+      setImageParseMessage("请先选择一张图片。");
+      return;
+    }
+
+    setImageParseStatus("parsing");
+    setImageParseMessage("");
+    setResult(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("image", imageFile);
+      formData.append("source_url", imageSourceUrl);
+
+      const response = await fetch("/api/admin/parse-image", {
+        method: "POST",
+        headers: {
+          "x-admin-token": adminToken,
+        },
+        body: formData,
+      });
+      const data = (await response.json().catch(() => ({}))) as ParseImageResult;
+
+      if (!response.ok) {
+        throw new Error(data.error || "Image parse failed.");
+      }
+
+      if (!data.content?.trim()) {
+        throw new Error("解析成功但正文为空，请检查图片内容。");
+      }
+
+      setTitle(metadataString(data.title));
+      setCategory(metadataString(data.category));
+      setSource(metadataString(data.source));
+      setSourceUrl(metadataString(data.source_url));
+      setSourceType(metadataString(data.source_type));
+      setUpdatedAt(metadataString(data.updatedAt));
+      setKeywords(metadataKeywords(data.keywords).join(", "));
+      setSummary(metadataString(data.summary));
+      setContent(data.content ?? "");
+      setImageParseStatus("success");
+      setImageParseMessage("图片已解析，请检查表单内容后再点击 Import。");
+    } catch (error) {
+      setImageParseStatus("error");
+      setImageParseMessage(
+        error instanceof Error ? error.message : "Image parse failed."
       );
     }
   }
@@ -231,8 +345,10 @@ function AdminImportPage() {
           category,
           source,
           source_url: sourceUrl,
+          source_type: sourceType,
           updated_at: updatedAt,
           keywords: parseKeywords(keywords),
+          summary,
           content,
         }),
       });
@@ -377,6 +493,82 @@ function AdminImportPage() {
               </div>
             </div>
 
+            <div className="sm:col-span-2 rounded-lg border border-dashed border-border bg-background/60 p-4">
+              <div className="flex flex-col gap-3">
+                <div>
+                  <div className="inline-flex items-center gap-2 text-sm font-medium">
+                    <ImageIcon className="h-4 w-4 text-primary" />
+                    Image / Long Screenshot Import
+                  </div>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                    上传图片或长截图后，后端会优先使用 MiniMax VLM 提取正文，失败后再尝试 OCR fallback。
+                    解析完成后只填充下方表单，不会自动导入数据库。
+                  </p>
+                </div>
+
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <label className="grid min-w-0 flex-1 gap-1.5">
+                    <span className="text-xs font-medium text-muted-foreground">
+                      Source URL
+                    </span>
+                    <input
+                      value={imageSourceUrl}
+                      onChange={(event) => setImageSourceUrl(event.target.value)}
+                      className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/10"
+                      placeholder="可选，例如原图或文章链接"
+                    />
+                  </label>
+                </div>
+
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0 text-xs text-muted-foreground">
+                    {imageFile ? (
+                      <p className="truncate">
+                        Selected:{" "}
+                        <span className="font-medium text-foreground">
+                          {imageFile.name}
+                        </span>{" "}
+                        · {formatFileSize(imageFile.size)}
+                      </p>
+                    ) : (
+                      <p>状态：等待选择图片文件</p>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-md border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted">
+                      <UploadCloud className="h-4 w-4" />
+                      Choose image
+                      <input
+                        type="file"
+                        accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
+                        onChange={handleImageFile}
+                        className="sr-only"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={handleParseImage}
+                      disabled={imageParseStatus === "parsing" || !imageFile}
+                      className="inline-flex items-center justify-center gap-2 rounded-md border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {imageParseStatus === "parsing" ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <ImageIcon className="h-4 w-4" />
+                      )}
+                      Parse Image
+                    </button>
+                  </div>
+                </div>
+
+                <ImageParseStatusMessage
+                  status={imageParseStatus}
+                  message={imageParseMessage}
+                />
+              </div>
+            </div>
+
             <Field label="Category" required>
               <select
                 value={category}
@@ -432,12 +624,30 @@ function AdminImportPage() {
               />
             </Field>
 
+            <Field label="Source Type">
+              <input
+                value={sourceType}
+                onChange={(event) => setSourceType(event.target.value)}
+                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/10"
+                placeholder="例如 image_upload / wechat_paste / admin_import"
+              />
+            </Field>
+
             <Field label="Keywords">
               <input
                 value={keywords}
                 onChange={(event) => setKeywords(event.target.value)}
                 className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/10"
                 placeholder="逗号分隔，例如 选课, course enrollment, SIS, Student Center"
+              />
+            </Field>
+
+            <Field label="Summary" className="sm:col-span-2">
+              <textarea
+                value={summary}
+                onChange={(event) => setSummary(event.target.value)}
+                className="min-h-[88px] w-full resize-y rounded-md border border-border bg-background px-3 py-2 text-sm leading-relaxed outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/10"
+                placeholder="解析后自动生成，可手动调整。"
               />
             </Field>
 
@@ -573,6 +783,47 @@ function WeChatParseStatusMessage({
     <p className="inline-flex items-center gap-2 text-xs text-destructive">
       <XCircle className="h-3.5 w-3.5" />
       {message || "WeChat article parse failed."}
+    </p>
+  );
+}
+
+function ImageParseStatusMessage({
+  status,
+  message,
+}: {
+  status: ImageParseStatus;
+  message: string;
+}) {
+  if (status === "idle") {
+    return (
+      <p className="text-xs text-muted-foreground">
+        状态：选择图片后点击 Parse Image
+      </p>
+    );
+  }
+
+  if (status === "parsing") {
+    return (
+      <p className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        parsing image...
+      </p>
+    );
+  }
+
+  if (status === "success") {
+    return (
+      <p className="inline-flex items-center gap-2 text-xs text-primary">
+        <CheckCircle2 className="h-3.5 w-3.5" />
+        {message}
+      </p>
+    );
+  }
+
+  return (
+    <p className="inline-flex items-center gap-2 text-xs text-destructive">
+      <XCircle className="h-3.5 w-3.5" />
+      {message || "Image parse failed."}
     </p>
   );
 }

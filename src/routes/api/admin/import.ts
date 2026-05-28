@@ -9,9 +9,11 @@ type ImportPayload = {
   category?: unknown;
   source?: unknown;
   source_url?: unknown;
+  source_type?: unknown;
   updatedAt?: unknown;
   updated_at?: unknown;
   keywords?: unknown;
+  summary?: unknown;
   content?: unknown;
 };
 
@@ -244,7 +246,9 @@ export const Route = createFileRoute("/api/admin/import")({
 
         const source = getString(body.source) || null;
         const sourceUrl = getString(body.source_url) || null;
+        const sourceType = getString(body.source_type) || "admin_import";
         const keywords = normalizeKeywords(body.keywords);
+        const summary = getString(body.summary);
         const slug = generateSlug(title);
         const chunks = chunkContent(content);
         const updatedAt =
@@ -261,7 +265,7 @@ export const Route = createFileRoute("/api/admin/import")({
               category,
               source,
               source_url: sourceUrl,
-              source_type: "admin_import",
+              source_type: sourceType,
               status: "ready",
               updated_at: updatedAt,
             },
@@ -306,7 +310,9 @@ export const Route = createFileRoute("/api/admin/import")({
               category,
               source,
               source_url: sourceUrl,
+              source_type: sourceType,
               updated_at: updatedAt,
+              summary,
               import_source: "admin_api",
               char_count: chunk.length,
             },
