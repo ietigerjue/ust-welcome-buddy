@@ -2,6 +2,16 @@
 
 UST Buddy is a knowledge-base AI assistant for HKUST freshmen. It answers student-life questions using a prepared Markdown knowledge base and MiniMax API, with source-grounded responses.
 
+## Development Context
+
+Before making changes, read these project notes first:
+
+- `docs/project-state.md` - current architecture, features, limits, and next step
+- `docs/change-log.md` - important change history
+- `docs/decisions.md` - technical decisions and rationale
+
+AI-assisted development should follow `AGENTS.md`.
+
 ## Target Users
 
 - Incoming HKUST undergraduate and postgraduate students
