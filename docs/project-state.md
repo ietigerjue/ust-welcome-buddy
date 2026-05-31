@@ -37,8 +37,8 @@ This file is the current engineering snapshot for UST Buddy. Read it before maki
 - Chat page for HKUST freshman-life questions.
 - Chinese-first suggested questions.
 - `/api/chat` receives the question from the frontend.
-- Server-side retrieval checks Supabase `document_chunks` first.
-- If Supabase retrieval fails, the app can fall back to local Markdown search.
+- Server-side retrieval uses Hybrid Search: Supabase keyword chunk search plus pgvector RPC search through `match_document_chunks`.
+- If either keyword or vector search fails, the other retrieval path can still provide context.
 - MiniMax generates answers from retrieved context only.
 - If no relevant source is found, the answer is `当前知识库没有覆盖这个问题。`
 - Source cards are deduplicated by document before being returned to the frontend.
@@ -131,26 +131,29 @@ Never expose service role keys or API keys to the frontend.
 
 - Provider layer: `src/lib/embeddings.ts`.
 - Single test script: `npm run test:embedding`.
+- Vector search test script: `npm run test:vector-search`.
 - Batch script: `npm run embed:chunks`.
 - Default provider: Jina.
 - Default Jina base URL: `https://api.jina.ai/v1`.
 - Optional proxy support is available through `HTTPS_PROXY` or `HTTP_PROXY`.
-- `embed:chunks` processes chunks with missing embeddings in batches and continues after per-chunk failures.
-- Embeddings are not yet wired into `/api/chat` retrieval.
+- `embed:chunks` processes chunks with missing embeddings in batches of 10, truncates long text to 3000 characters, retries failed chunks with 1s / 3s / 6s delays, and continues after per-chunk failures.
+- Vector search helper exists in `src/lib/searchVectorKnowledgeBase.ts`; it generates a query embedding, calls Supabase RPC `match_document_chunks` with `match_count = 8`, and enriches chunks with `documents` metadata including slug and source type.
+- `/api/chat` now combines keyword and vector results, dedupes by chunk, reranks with normalized keyword score weight 0.5 plus vector similarity weight 0.5 plus a 0.15 overlap bonus, truncates each context chunk to 1200 characters, and sends the top 6 chunks to MiniMax.
+- `question_logs` records `retrieval_mode = "hybrid"` and `context_chunks_count` for chat requests when the Supabase table supports those fields.
 
 ## Current Next Step
 
-The active next step is pgvector semantic retrieval:
+The active next step is validating and tuning pgvector Hybrid Search:
 
 - Confirm or add `document_chunks.embedding vector(...)`.
 - Run `npm run embed:chunks`.
-- Add a Supabase RPC or SQL function for vector similarity search.
-- Combine semantic retrieval with current keyword retrieval.
+- Ensure Supabase RPC `match_document_chunks` exists and returns the expected chunk fields.
+- Tune keyword/vector weights, similarity thresholds, and result limits based on test questions.
 - Keep existing source deduplication and question logging.
 
 ## Known Limitations
 
-- `/api/chat` still uses keyword-style Supabase chunk retrieval, not pgvector semantic retrieval.
+- `/api/chat` depends on Supabase RPC `match_document_chunks` for vector retrieval; if the RPC or embeddings are not ready, Hybrid Search falls back to keyword results only.
 - Embedding scripts need working embedding API configuration and network access.
 - Mainland China network access to Jina or MiniMax may require a proxy or alternative deployment path.
 - Admin pages use a shared token, not a full login system.

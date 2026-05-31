@@ -100,6 +100,7 @@ type SupabaseChunkRow = {
 };
 
 export type SupabaseKnowledgeDocument = KnowledgeDocument & {
+  chunk_id: string;
   document_id: string;
   slug: string;
   chunkIndex: number;
@@ -275,6 +276,7 @@ function toKnowledgeDocument(
 
   return {
     id: `${slug}:${row.chunk_index ?? 0}`,
+    chunk_id: row.id,
     document_id: documentId,
     slug,
     title: document?.title ?? "Untitled document",

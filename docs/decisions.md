@@ -35,6 +35,10 @@ MiniMax M2.7 chat-model image input was unreliable for long screenshots and post
 
 Jina is the current default embedding provider because it exposes a straightforward embeddings API and works well for a replaceable provider layer. The implementation remains provider-oriented so MiniMax or another OpenAI-compatible embedding service can be swapped in through environment variables.
 
+## Hybrid Search For `/api/chat`
+
+Keyword search handles exact phrases, HKUST-specific names, and bilingual terms well. Vector search improves recall for paraphrased questions. `/api/chat` therefore combines both paths, dedupes by chunk, reranks with normalized keyword score weight 0.5 and vector similarity weight 0.5, adds a 0.15 bonus when both methods find the same chunk, truncates each selected chunk to control token cost, and still dedupes displayed sources by document.
+
 ## Mainland China Access Is Deferred
 
 Network access from Mainland China to model providers can be unstable. The current code supports proxy variables for embeddings, but full Mainland-friendly deployment is postponed. That work should be handled as a deployment and provider-routing decision, not patched ad hoc into chat or admin UI code.

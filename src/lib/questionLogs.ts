@@ -15,6 +15,8 @@ type LogQuestionArgs = {
   answerStatus: QuestionAnswerStatus;
   matchedSources?: MatchedSource[];
   errorMessage?: string;
+  retrievalMode?: "hybrid" | "keyword" | "vector";
+  contextChunksCount?: number;
 };
 
 export async function logQuestion({
@@ -22,6 +24,8 @@ export async function logQuestion({
   answerStatus,
   matchedSources = [],
   errorMessage,
+  retrievalMode,
+  contextChunksCount,
 }: LogQuestionArgs) {
   try {
     console.log("[question_logs] logQuestion called", question);
@@ -45,6 +49,8 @@ export async function logQuestion({
       matched_sources: matchedSources,
       answer_status: answerStatus,
       error_message: errorMessage,
+      retrieval_mode: retrievalMode,
+      context_chunks_count: contextChunksCount,
     };
 
     console.log("[question_logs] insert payload", payload);

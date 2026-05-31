@@ -215,11 +215,11 @@ export function findMockAnswer(question: string): { answer: string; sources: Sou
 }
 
 export const suggestedQuestions = [
-  "从香港机场到 HKUST 怎么走？",
-  "宿舍入住前需要准备哪些东西？",
-  "新生到香港后怎么买电话卡或 SIM 卡？",
-  "八达通怎么申请和使用？",
-  "科大学生账号、邮箱和 Canvas 怎么设置？",
-  "Student Center 里怎么查学费和缴费？",
-  "RPG 新生选课和毕业要求要注意什么？",
+  "从机场到港科大有哪些路线？",
+  "新生来港过关和交通要注意什么？",
+  "宿舍或租房入住前要准备哪些事项？",
+  "到香港后电话卡、香港身份证和科大卡怎么安排？",
+  "学生八达通怎么申请、增值和报失？",
+  "科大账号、学生邮箱、Canvas 和 SIS 怎么设置？",
+  "Student Center 里怎么查学费、宿舍费和缴费记录？",
 ];

@@ -8,6 +8,10 @@ Important changes in reverse chronological order. Keep this file concise and upd
 - Added `npm run test:embedding` for single-text embedding checks.
 - Added `npm run embed:chunks` for backfilling missing `document_chunks.embedding` values.
 - Added Jina-compatible embedding configuration and proxy support through `HTTPS_PROXY` / `HTTP_PROXY`.
+- Enhanced `embed:chunks` with 10-row batches, 3000-character truncation, per-chunk retry delays, failure tracking, and final summary output.
+- Added `src/lib/searchVectorKnowledgeBase.ts` for future pgvector retrieval through Supabase RPC `match_document_chunks`.
+- Upgraded `/api/chat` to Hybrid Search by combining keyword retrieval and vector retrieval, deduping by chunk, reranking top 6 context chunks, truncating chunk content to 1200 characters, preserving document-level source deduplication, and logging hybrid retrieval metadata.
+- Added `npm run test:vector-search` to test vector retrieval against `match_document_chunks` with three fixed test questions.
 - Verified TypeScript and production build for the embedding scripts. Local Jina API calls may still require a working proxy depending on network conditions.
 - Updated chat suggested questions to better match the current HKUST knowledge base coverage.
 

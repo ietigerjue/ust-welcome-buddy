@@ -1,6 +1,6 @@
 import type { KnowledgeDocument } from "@/data/knowledgeBase";
 
-const MAX_CONTEXT_DOCUMENTS = 3;
+const MAX_CONTEXT_DOCUMENTS = 8;
 const MAX_DOCUMENT_CONTENT_LENGTH = 1200;
 
 type GenerateAnswerArgs = {
