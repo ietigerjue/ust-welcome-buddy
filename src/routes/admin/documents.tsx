@@ -1,7 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Fragment as ReactFragment, useState } from "react";
 import {
-  ArrowRight,
   Database,
   ExternalLink,
   FileText,
@@ -13,6 +12,7 @@ import {
   X,
   XCircle,
 } from "lucide-react";
+import { AdminNav } from "@/components/admin-nav";
 import { SiteNav } from "@/components/site-nav";
 
 type LoadStatus = "idle" | "loading" | "success" | "error";
@@ -225,8 +225,9 @@ function AdminDocumentsPage() {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <SiteNav />
+      <AdminNav />
       <main className="flex-1 mx-auto w-full max-w-6xl px-4 sm:px-6 py-8 sm:py-12">
-        <div className="mb-8 flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+        <div className="mb-8">
           <div>
             <div className="inline-flex items-center gap-2 rounded-full border border-border bg-background/80 px-3 py-1 text-xs text-muted-foreground mb-4">
               <Database className="h-3.5 w-3.5 text-primary" />
@@ -240,14 +241,6 @@ function AdminDocumentsPage() {
               chunks 数量。此页面不会出现在普通用户导航中。
             </p>
           </div>
-
-          <a
-            href="/admin/import"
-            className="inline-flex items-center justify-center gap-2 rounded-md border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted"
-          >
-            去导入资料
-            <ArrowRight className="h-4 w-4" />
-          </a>
         </div>
 
         <section className="rounded-lg border border-border bg-card p-4 sm:p-6 shadow-sm">

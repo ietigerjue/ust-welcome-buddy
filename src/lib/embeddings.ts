@@ -1,22 +1,16 @@
 import { Agent, ProxyAgent, setGlobalDispatcher } from "undici";
+import {
+  assertProviderRuntimeConfigured,
+  getEmbeddingProvider,
+  resolveProviderRuntime,
+  type EmbeddingProvider,
+} from "./modelRouter";
 
-const DEFAULT_EMBEDDING_PROVIDER = "jina";
-const DEFAULT_JINA_BASE_URL = "https://api.jina.ai/v1";
 const EMBEDDING_TIMEOUT_MS = 30000;
 let configuredDispatcherKey: string | undefined;
 
 type ProcessLike = {
   env?: Record<string, string | undefined>;
-};
-
-type EmbeddingProvider = "jina" | "openai_compatible" | "minimax";
-
-type EmbeddingConfig = {
-  provider: EmbeddingProvider;
-  apiKey?: string;
-  baseUrl?: string;
-  model?: string;
-  dimensions?: number;
 };
 
 type EmbeddingResponse = {
@@ -38,79 +32,11 @@ function getEnv(name: string) {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
-function normalizeProvider(value: string | undefined): EmbeddingProvider {
-  const provider = (value || DEFAULT_EMBEDDING_PROVIDER).toLowerCase();
-
-  if (provider === "jina") {
-    return "jina";
-  }
-
-  if (provider === "minimax") {
-    return "minimax";
-  }
-
-  if (
-    provider === "openai_compatible" ||
-    provider === "openai-compatible" ||
-    provider === "compatible"
-  ) {
-    return "openai_compatible";
-  }
-
-  throw new Error(
-    `Unsupported EMBEDDING_PROVIDER: ${value}. Supported providers: jina, minimax, openai_compatible.`
-  );
+function assertEmbeddingConfig(provider: EmbeddingProvider) {
+  assertProviderRuntimeConfigured(provider);
 }
 
-function parseDimensions(value: string | undefined) {
-  if (!value) {
-    return undefined;
-  }
-
-  const dimensions = Number.parseInt(value, 10);
-
-  if (!Number.isFinite(dimensions) || dimensions <= 0) {
-    throw new Error("EMBEDDING_DIMENSIONS must be a positive integer.");
-  }
-
-  return dimensions;
-}
-
-function getEmbeddingConfig(): EmbeddingConfig {
-  const provider = normalizeProvider(getEnv("EMBEDDING_PROVIDER"));
-  const baseUrl =
-    getEnv("EMBEDDING_BASE_URL") ||
-    (provider === "jina" ? DEFAULT_JINA_BASE_URL : undefined);
-
-  return {
-    provider,
-    apiKey: getEnv("EMBEDDING_API_KEY"),
-    baseUrl,
-    model: getEnv("EMBEDDING_MODEL"),
-    dimensions: parseDimensions(getEnv("EMBEDDING_DIMENSIONS")),
-  };
-}
-
-function assertEmbeddingConfig(config: EmbeddingConfig) {
-  const missingKeys = [
-    ["EMBEDDING_API_KEY", config.apiKey],
-    ["EMBEDDING_BASE_URL", config.baseUrl],
-    ["EMBEDDING_MODEL", config.model],
-  ]
-    .filter(([, value]) => !value)
-    .map(([key]) => key);
-
-  if (missingKeys.length > 0) {
-    throw new Error(
-      `Embedding configuration is missing: ${missingKeys.join(
-        ", "
-      )}. Please configure the embedding provider environment variables.`
-    );
-  }
-}
-
-function getEmbeddingEndpoint(config: EmbeddingConfig) {
-  const baseUrl = config.baseUrl ?? "";
+function getEmbeddingEndpoint(baseUrl: string) {
 
   return baseUrl.endsWith("/embeddings")
     ? baseUrl
@@ -154,14 +80,18 @@ function configureEmbeddingDispatcher() {
   configuredDispatcherKey = dispatcherKey;
 }
 
-function buildEmbeddingPayload(text: string, config: EmbeddingConfig) {
+function buildEmbeddingPayload(
+  text: string,
+  model: string,
+  dimensions?: number
+) {
   const payload: Record<string, unknown> = {
-    model: config.model,
+    model,
     input: [text],
   };
 
-  if (config.dimensions) {
-    payload.dimensions = config.dimensions;
+  if (dimensions) {
+    payload.dimensions = dimensions;
   }
 
   return payload;
@@ -228,15 +158,16 @@ export async function generateEmbedding(text: string): Promise<number[]> {
     throw new Error("generateEmbedding requires non-empty text.");
   }
 
-  const config = getEmbeddingConfig();
-  assertEmbeddingConfig(config);
+  const provider = await getEmbeddingProvider();
+  assertEmbeddingConfig(provider);
+  const runtime = resolveProviderRuntime(provider);
   configureEmbeddingDispatcher();
-  const endpoint = getEmbeddingEndpoint(config);
+  const endpoint = getEmbeddingEndpoint(runtime.baseUrl ?? "");
 
   console.log("[embeddings] request config:", {
-    EMBEDDING_PROVIDER: config.provider,
-    EMBEDDING_BASE_URL: config.baseUrl,
-    EMBEDDING_MODEL: config.model,
+    EMBEDDING_PROVIDER: provider.provider,
+    EMBEDDING_BASE_URL: runtime.baseUrl,
+    EMBEDDING_MODEL: runtime.model,
     textLength: input.length,
   });
 
@@ -250,10 +181,12 @@ export async function generateEmbedding(text: string): Promise<number[]> {
       response = await fetch(endpoint, {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${config.apiKey}`,
+          Authorization: `Bearer ${runtime.apiKey}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(buildEmbeddingPayload(input, config)),
+        body: JSON.stringify(
+          buildEmbeddingPayload(input, runtime.model ?? "", runtime.dimensions)
+        ),
         signal: controller.signal,
       });
     } catch (error) {
@@ -285,9 +218,9 @@ export async function generateEmbedding(text: string): Promise<number[]> {
 
     const embedding = extractEmbedding(parsedBody);
 
-    if (config.dimensions && embedding.length !== config.dimensions) {
+    if (runtime.dimensions && embedding.length !== runtime.dimensions) {
       throw new Error(
-        `Embedding dimension mismatch: expected ${config.dimensions}, received ${embedding.length}.`
+        `Embedding dimension mismatch: expected ${runtime.dimensions}, received ${embedding.length}.`
       );
     }
 

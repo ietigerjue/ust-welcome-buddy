@@ -45,6 +45,11 @@ type ContextDocument = {
   hybridScore?: number;
 };
 
+type ChatModelLogInfo = {
+  modelProvider: string;
+  modelName: string;
+};
+
 function json(data: ChatResponse, init?: ResponseInit) {
   return Response.json(data, init);
 }
@@ -53,6 +58,7 @@ function getMiniMaxErrorMessage(answer: string) {
   const errorPrefixes = [
     "MiniMax 请求失败：",
     "MiniMax 配置缺失：",
+    "Provider is configured but required environment variable is missing.",
     "MiniMax 没有返回有效回答",
   ];
   const matchedPrefix = errorPrefixes.find((prefix) =>
@@ -269,25 +275,64 @@ async function searchKnowledge(question: string) {
   });
 }
 
+async function getChatModelLogInfo(): Promise<ChatModelLogInfo> {
+  try {
+    const { getModelConfig } = await import("@/lib/appConfig");
+    const config = await getModelConfig("chat_llm");
+
+    return {
+      modelProvider: config.provider || "unknown",
+      modelName: config.model || process.env.MINIMAX_MODEL || "unknown",
+    };
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unknown model config error";
+    console.warn(`[UST Buddy] Failed to load chat model config: ${message}`);
+
+    return {
+      modelProvider:
+        process.env.CHAT_LLM_PROVIDER || process.env.LLM_PROVIDER || "unknown",
+      modelName:
+        process.env.CHAT_LLM_MODEL || process.env.MINIMAX_MODEL || "unknown",
+    };
+  }
+}
+
 export const Route = createFileRoute("/api/chat")({
   server: {
     handlers: {
       POST: async ({ request }) => {
+        const startedAt = Date.now();
         const { logQuestion } = await import("@/lib/questionLogs");
+        const { estimateTokens } = await import("@/lib/tokenEstimate");
+        const { buildAnswerTokenEstimateText } = await import("@/lib/llm");
         const body = await request.json().catch(() => null);
         const question = typeof body?.question === "string" ? body.question : "";
+        const modelLogInfo = await getChatModelLogInfo();
         const documents = await searchKnowledge(question);
 
         if (documents.length === 0) {
+          const answer = "当前知识库没有覆盖这个问题。";
+
           await logQuestion({
             question,
             answerStatus: "not_covered",
             retrievalMode: "hybrid",
             contextChunksCount: 0,
+            modelProvider: modelLogInfo.modelProvider,
+            modelName: modelLogInfo.modelName,
+            estimatedInputTokens: estimateTokens(
+              buildAnswerTokenEstimateText({
+                question,
+                contextDocuments: [],
+              })
+            ),
+            estimatedOutputTokens: estimateTokens(answer),
+            latencyMs: Date.now() - startedAt,
           });
 
           return json({
-            answer: "当前知识库没有覆盖这个问题。",
+            answer,
             sources: [],
           });
         }
@@ -308,6 +353,12 @@ export const Route = createFileRoute("/api/chat")({
 
         const errorMessage = getMiniMaxErrorMessage(answer);
         const dedupedSources = dedupeSources(documents.map(toChatSource));
+        const estimatedInputTokens = estimateTokens(
+          buildAnswerTokenEstimateText({
+            question,
+            contextDocuments: documents,
+          })
+        );
 
         await logQuestion({
           question,
@@ -316,6 +367,11 @@ export const Route = createFileRoute("/api/chat")({
           errorMessage,
           retrievalMode: "hybrid",
           contextChunksCount: documents.length,
+          modelProvider: modelLogInfo.modelProvider,
+          modelName: modelLogInfo.modelName,
+          estimatedInputTokens,
+          estimatedOutputTokens: estimateTokens(answer),
+          latencyMs: Date.now() - startedAt,
         });
 
         return json({

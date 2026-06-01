@@ -1,5 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import * as cheerio from "cheerio";
+import {
+  assertProviderRuntimeConfigured,
+  getLLMProvider,
+  resolveProviderRuntime,
+} from "@/lib/modelRouter";
 
 const ALLOWED_CATEGORIES = [
   "arrival",
@@ -273,24 +278,20 @@ function buildExtractionPrompt(content: string) {
 }
 
 async function generateMetadataWithMiniMax(content: string) {
-  const apiKey = getEnv("MINIMAX_API_KEY");
-  const baseURL = getEnv("MINIMAX_BASE_URL");
-  const model = getEnv("MINIMAX_MODEL");
-
-  if (!apiKey || !baseURL || !model) {
-    throw new Error("MiniMax metadata extraction config is missing.");
-  }
+  const provider = await getLLMProvider("metadata_llm");
+  const runtime = resolveProviderRuntime(provider);
+  assertProviderRuntimeConfigured(provider, runtime);
 
   const { default: OpenAI } = await import("openai");
   const client = new OpenAI({
-    apiKey,
-    baseURL,
+    apiKey: runtime.apiKey ?? "",
+    baseURL: runtime.baseUrl ?? "",
   });
 
   const completion = await Promise.race([
     client.chat.completions.create(
       {
-        model,
+        model: runtime.model ?? "",
         temperature: 0.1,
         max_tokens: 1500,
         response_format: { type: "json_object" },

@@ -12,6 +12,14 @@ Before making changes, read these project notes first:
 
 AI-assisted development should follow `AGENTS.md`.
 
+## Model Configurability
+
+UST Buddy is moving toward configurable providers for Chat LLM, Metadata LLM, Image Parser, and Embedding generation. Provider/model choices should be read through a provider/router/config layer rather than hardcoded in routes or UI.
+
+API keys are not stored in the database. They should stay in `.env.local`, Vercel Environment Variables, or a secrets manager. Future `/admin/settings` work should allow admins to manage provider/model config without exposing secrets in the browser.
+
+`app_config` stores only provider/model metadata and environment variable names such as `DEEPSEEK_API_KEY`; it must not store real API keys. `/admin/settings` shows whether the named key is configured as `keyConfigured: true/false`. If it is false, add the variable to `.env.local` locally or Vercel Environment Variables in production.
+
 ## Target Users
 
 - Incoming HKUST undergraduate and postgraduate students

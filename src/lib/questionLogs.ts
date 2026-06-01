@@ -17,6 +17,11 @@ type LogQuestionArgs = {
   errorMessage?: string;
   retrievalMode?: "hybrid" | "keyword" | "vector";
   contextChunksCount?: number;
+  modelProvider?: string;
+  modelName?: string;
+  estimatedInputTokens?: number;
+  estimatedOutputTokens?: number;
+  latencyMs?: number;
 };
 
 export async function logQuestion({
@@ -26,6 +31,11 @@ export async function logQuestion({
   errorMessage,
   retrievalMode,
   contextChunksCount,
+  modelProvider,
+  modelName,
+  estimatedInputTokens,
+  estimatedOutputTokens,
+  latencyMs,
 }: LogQuestionArgs) {
   try {
     console.log("[question_logs] logQuestion called", question);
@@ -51,6 +61,11 @@ export async function logQuestion({
       error_message: errorMessage,
       retrieval_mode: retrievalMode,
       context_chunks_count: contextChunksCount,
+      model_provider: modelProvider,
+      model_name: modelName,
+      estimated_input_tokens: estimatedInputTokens,
+      estimated_output_tokens: estimatedOutputTokens,
+      latency_ms: latencyMs,
     };
 
     console.log("[question_logs] insert payload", payload);

@@ -4,17 +4,20 @@ import {
   BookOpen,
   CheckCircle2,
   FileText,
+  Globe2,
   ImageIcon,
   Loader2,
   UploadCloud,
   XCircle,
 } from "lucide-react";
+import { AdminNav } from "@/components/admin-nav";
 import { SiteNav } from "@/components/site-nav";
 
 type ImportStatus = "idle" | "importing" | "success" | "error";
 type ParseStatus = "idle" | "parsing" | "success" | "error";
 type WeChatParseStatus = "idle" | "parsing" | "success" | "error";
 type ImageParseStatus = "idle" | "parsing" | "success" | "error";
+type UrlParseStatus = "idle" | "loading" | "success" | "error";
 
 const CATEGORY_OPTIONS = [
   "arrival",
@@ -56,6 +59,19 @@ type ParseWeChatResult = {
 };
 
 type ParseImageResult = {
+  title?: string;
+  category?: string;
+  source?: string;
+  source_url?: string;
+  source_type?: string;
+  updatedAt?: string;
+  keywords?: string[];
+  summary?: string;
+  content?: string;
+  error?: string;
+};
+
+type ParseUrlResult = {
   title?: string;
   category?: string;
   source?: string;
@@ -137,10 +153,40 @@ function AdminImportPage() {
     useState<WeChatParseStatus>("idle");
   const [wechatParseMessage, setWechatParseMessage] = useState("");
   const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imageInputResetKey, setImageInputResetKey] = useState(0);
   const [imageSourceUrl, setImageSourceUrl] = useState("");
   const [imageParseStatus, setImageParseStatus] =
     useState<ImageParseStatus>("idle");
   const [imageParseMessage, setImageParseMessage] = useState("");
+  const [webUrl, setWebUrl] = useState("");
+  const [urlParseStatus, setUrlParseStatus] = useState<UrlParseStatus>("idle");
+  const [urlParseMessage, setUrlParseMessage] = useState("");
+
+  function resetImportForm() {
+    setTitle("");
+    setCategory("");
+    setSource("");
+    setSourceUrl("");
+    setSourceType("");
+    setUpdatedAt("");
+    setKeywords("");
+    setSummary("");
+    setContent("");
+    setParseStatus("idle");
+    setParseMessage("");
+    setWechatSourceUrl("");
+    setWechatRawContent("");
+    setWechatParseStatus("idle");
+    setWechatParseMessage("");
+    setImageFile(null);
+    setImageInputResetKey((currentKey) => currentKey + 1);
+    setImageSourceUrl("");
+    setImageParseStatus("idle");
+    setImageParseMessage("");
+    setWebUrl("");
+    setUrlParseStatus("idle");
+    setUrlParseMessage("");
+  }
 
   async function handleMarkdownFile(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -328,6 +374,49 @@ function AdminImportPage() {
     }
   }
 
+  async function handleParseUrl() {
+    setUrlParseStatus("loading");
+    setUrlParseMessage("");
+    setResult(null);
+
+    try {
+      const response = await fetch("/api/admin/parse-url", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-admin-token": adminToken,
+        },
+        body: JSON.stringify({ url: webUrl }),
+      });
+      const data = (await response.json().catch(() => ({}))) as ParseUrlResult;
+
+      if (!response.ok) {
+        throw new Error(data.error || "URL parse failed.");
+      }
+
+      if (!data.content?.trim()) {
+        throw new Error("解析成功但正文为空，请检查 URL 内容。");
+      }
+
+      setTitle(metadataString(data.title));
+      setCategory(metadataString(data.category));
+      setSource(metadataString(data.source));
+      setSourceUrl(metadataString(data.source_url));
+      setSourceType(metadataString(data.source_type));
+      setUpdatedAt(metadataString(data.updatedAt));
+      setKeywords(metadataKeywords(data.keywords).join(", "));
+      setSummary(metadataString(data.summary));
+      setContent(data.content ?? "");
+      setUrlParseStatus("success");
+      setUrlParseMessage("网页已解析，请检查表单内容后再点击 Import。");
+    } catch (error) {
+      setUrlParseStatus("error");
+      setUrlParseMessage(
+        error instanceof Error ? error.message : "URL parse failed."
+      );
+    }
+  }
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setStatus("importing");
@@ -360,6 +449,7 @@ function AdminImportPage() {
 
       setStatus("success");
       setResult(data);
+      resetImportForm();
     } catch (error) {
       setStatus("error");
       setResult({
@@ -371,6 +461,7 @@ function AdminImportPage() {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <SiteNav />
+      <AdminNav />
       <main className="flex-1 mx-auto w-full max-w-4xl px-4 sm:px-6 py-8 sm:py-12">
         <div className="mb-8">
           <div className="inline-flex items-center gap-2 rounded-full border border-border bg-background/80 px-3 py-1 text-xs text-muted-foreground mb-4">
@@ -540,6 +631,7 @@ function AdminImportPage() {
                       <UploadCloud className="h-4 w-4" />
                       Choose image
                       <input
+                        key={imageInputResetKey}
                         type="file"
                         accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
                         onChange={handleImageFile}
@@ -565,6 +657,53 @@ function AdminImportPage() {
                 <ImageParseStatusMessage
                   status={imageParseStatus}
                   message={imageParseMessage}
+                />
+              </div>
+            </div>
+
+            <div className="sm:col-span-2 rounded-lg border border-dashed border-border bg-background/60 p-4">
+              <div className="flex flex-col gap-3">
+                <div>
+                  <div className="inline-flex items-center gap-2 text-sm font-medium">
+                    <Globe2 className="h-4 w-4 text-primary" />
+                    Web URL Import
+                  </div>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                    输入公开网页 URL，后端会抓取单个页面并清洗正文；支持单篇 mp.weixin.qq.com
+                    公众号文章，并会尝试解析正文图片。不会递归抓取链接，不会自动导入数据库。
+                  </p>
+                </div>
+
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                  <label className="grid min-w-0 flex-1 gap-1.5">
+                    <span className="text-xs font-medium text-muted-foreground">
+                      URL
+                    </span>
+                    <input
+                      value={webUrl}
+                      onChange={(event) => setWebUrl(event.target.value)}
+                      className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/10"
+                      placeholder="https://example.com/page"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleParseUrl}
+                    disabled={urlParseStatus === "loading" || !webUrl.trim()}
+                    className="inline-flex items-center justify-center gap-2 rounded-md border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {urlParseStatus === "loading" ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Globe2 className="h-4 w-4" />
+                    )}
+                    Parse URL
+                  </button>
+                </div>
+
+                <UrlParseStatusMessage
+                  status={urlParseStatus}
+                  message={urlParseMessage}
                 />
               </div>
             </div>
@@ -824,6 +963,47 @@ function ImageParseStatusMessage({
     <p className="inline-flex items-center gap-2 text-xs text-destructive">
       <XCircle className="h-3.5 w-3.5" />
       {message || "Image parse failed."}
+    </p>
+  );
+}
+
+function UrlParseStatusMessage({
+  status,
+  message,
+}: {
+  status: UrlParseStatus;
+  message: string;
+}) {
+  if (status === "idle") {
+    return (
+      <p className="text-xs text-muted-foreground">
+        状态：输入公开网页 URL 后点击 Parse URL
+      </p>
+    );
+  }
+
+  if (status === "loading") {
+    return (
+      <p className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        parsing url...
+      </p>
+    );
+  }
+
+  if (status === "success") {
+    return (
+      <p className="inline-flex items-center gap-2 text-xs text-primary">
+        <CheckCircle2 className="h-3.5 w-3.5" />
+        {message}
+      </p>
+    );
+  }
+
+  return (
+    <p className="inline-flex items-center gap-2 text-xs text-destructive">
+      <XCircle className="h-3.5 w-3.5" />
+      {message || "URL parse failed."}
     </p>
   );
 }

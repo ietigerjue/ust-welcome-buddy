@@ -104,7 +104,7 @@ export const Route = createFileRoute("/api/admin/parse-image")({
           };
           const sourceUrl =
             typeof payload.source_url === "string" ? payload.source_url : "";
-          const provider = getImageParseProvider();
+          const provider = await getImageParseProvider();
           let parsedImage;
 
           if (provider === "ocr") {

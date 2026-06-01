@@ -1,5 +1,9 @@
-const DEFAULT_VLM_BASE_URL = "https://api.minimaxi.com";
-const DEFAULT_VLM_ENDPOINT = "/v1/coding_plan/vlm";
+import {
+  assertProviderRuntimeConfigured,
+  getImageParserProvider,
+  resolveProviderRuntime,
+} from "./modelRouter";
+
 const VLM_TIMEOUT_MS = 60000;
 
 type ProcessLike = {
@@ -17,14 +21,6 @@ function getEnv(name: string) {
   const value = processEnv ?? importMetaEnv?.[name];
 
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
-}
-
-function getVlmConfig() {
-  return {
-    apiKey: getEnv("MINIMAX_VLM_API_KEY"),
-    baseUrl: getEnv("MINIMAX_VLM_BASE_URL") || DEFAULT_VLM_BASE_URL,
-    endpoint: getEnv("MINIMAX_VLM_ENDPOINT") || DEFAULT_VLM_ENDPOINT,
-  };
 }
 
 function joinUrl(baseUrl: string, endpoint: string) {
@@ -78,8 +74,10 @@ function findContent(value: unknown): string {
   return "";
 }
 
-export function getImageParseProvider() {
-  return getEnv("IMAGE_PARSE_PROVIDER") || "minimax_vlm";
+export async function getImageParseProvider() {
+  const provider = await getImageParserProvider();
+
+  return provider.provider;
 }
 
 export async function understandImageWithMiniMaxVlm(
@@ -87,20 +85,20 @@ export async function understandImageWithMiniMaxVlm(
   mimeType: string,
   prompt: string
 ) {
-  const config = getVlmConfig();
-
-  if (!config.apiKey) {
-    throw new Error("MiniMax VLM API key is missing. Configure MINIMAX_VLM_API_KEY.");
-  }
+  const provider = await getImageParserProvider();
+  const runtime = resolveProviderRuntime(provider);
+  assertProviderRuntimeConfigured(provider, runtime);
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), VLM_TIMEOUT_MS);
 
   try {
-    const response = await fetch(joinUrl(config.baseUrl, config.endpoint), {
+    const response = await fetch(
+      joinUrl(runtime.baseUrl ?? "", runtime.endpoint ?? ""),
+      {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${config.apiKey}`,
+        Authorization: `Bearer ${runtime.apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -108,7 +106,8 @@ export async function understandImageWithMiniMaxVlm(
         image_url: bufferToDataUrl(fileBuffer, mimeType),
       }),
       signal: controller.signal,
-    });
+      }
+    );
     const rawBody = await response.text();
     let parsedBody: MiniMaxVlmResponse | null = null;
 
