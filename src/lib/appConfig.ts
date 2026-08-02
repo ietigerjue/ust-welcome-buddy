@@ -1,11 +1,4 @@
-import { getSupabaseServerClient } from "./supabaseServer";
-
-export const MODEL_CONFIG_KEYS = [
-  "chat_llm",
-  "metadata_llm",
-  "image_parser",
-  "embedding",
-] as const;
+export const MODEL_CONFIG_KEYS = ["chat_llm", "metadata_llm", "image_parser", "embedding"] as const;
 
 export type ModelConfigKey = (typeof MODEL_CONFIG_KEYS)[number];
 
@@ -24,11 +17,6 @@ export type ModelProviderConfig = {
 
 export type AppConfig = Record<ModelConfigKey, ModelProviderConfig>;
 
-type AppConfigRow = {
-  key: string;
-  value: unknown;
-};
-
 type RawProviderConfig = {
   provider?: unknown;
   model?: unknown;
@@ -40,27 +28,18 @@ type RawProviderConfig = {
   enabled?: unknown;
 };
 
-const REQUIRED_FIELDS = [
-  "provider",
-  "model",
-  "base_url_env",
-  "api_key_env",
-] as const;
+const REQUIRED_FIELDS = ["provider", "model", "base_url_env", "api_key_env"] as const;
 
 function env(name: string) {
   return process.env[name]?.trim() ?? "";
 }
 
 function textOrFallback(value: unknown, fallback: string) {
-  return typeof value === "string" && value.trim().length > 0
-    ? value.trim()
-    : fallback;
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : fallback;
 }
 
 function optionalText(value: unknown) {
-  return typeof value === "string" && value.trim().length > 0
-    ? value.trim()
-    : undefined;
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
 }
 
 function numberOrFallback(value: unknown, fallback?: number) {
@@ -87,10 +66,6 @@ function booleanOrFallback(value: unknown, fallback?: boolean) {
   return fallback;
 }
 
-function isModelConfigKey(value: string): value is ModelConfigKey {
-  return MODEL_CONFIG_KEYS.includes(value as ModelConfigKey);
-}
-
 function buildConfig(
   fallback: Omit<ModelProviderConfig, "source" | "missingFields">,
   raw?: RawProviderConfig,
@@ -102,8 +77,7 @@ function buildConfig(
     api_key_env: textOrFallback(raw?.api_key_env, fallback.api_key_env),
     endpoint_env: optionalText(raw?.endpoint_env) ?? fallback.endpoint_env,
     dimensions: numberOrFallback(raw?.dimensions, fallback.dimensions),
-    fallback_provider:
-      optionalText(raw?.fallback_provider) ?? fallback.fallback_provider,
+    fallback_provider: optionalText(raw?.fallback_provider) ?? fallback.fallback_provider,
     enabled: booleanOrFallback(raw?.enabled, fallback.enabled),
   };
 
@@ -115,23 +89,15 @@ function buildConfig(
 }
 
 export function getDefaultAppConfig(): AppConfig {
-  const chatProvider =
-    env("CHAT_LLM_PROVIDER") ||
-    env("LLM_PROVIDER") ||
-    (env("DEEPSEEK_API_KEY") ? "deepseek" : "minimax");
-  const metadataProvider =
-    env("METADATA_LLM_PROVIDER") ||
-    env("LLM_PROVIDER") ||
-    (env("DEEPSEEK_API_KEY") ? "deepseek" : "minimax");
+  const chatProvider = env("CHAT_LLM_PROVIDER") || env("LLM_PROVIDER") || "minimax";
+  const metadataProvider = env("METADATA_LLM_PROVIDER") || env("LLM_PROVIDER") || "minimax";
 
   return {
     chat_llm: buildConfig({
       provider: chatProvider,
       model:
         env("CHAT_LLM_MODEL") ||
-        (chatProvider === "deepseek" ? env("DEEPSEEK_MODEL") : "") ||
-        env("MINIMAX_MODEL") ||
-        env("DEEPSEEK_MODEL"),
+        (chatProvider === "deepseek" ? env("DEEPSEEK_MODEL") : env("MINIMAX_MODEL")),
       base_url_env:
         env("CHAT_LLM_BASE_URL_ENV") ||
         (chatProvider === "deepseek" ? "DEEPSEEK_BASE_URL" : "MINIMAX_BASE_URL"),
@@ -144,19 +110,13 @@ export function getDefaultAppConfig(): AppConfig {
       provider: metadataProvider,
       model:
         env("METADATA_LLM_MODEL") ||
-        (metadataProvider === "deepseek" ? env("DEEPSEEK_MODEL") : "") ||
-        env("MINIMAX_MODEL") ||
-        env("DEEPSEEK_MODEL"),
+        (metadataProvider === "deepseek" ? env("DEEPSEEK_MODEL") : env("MINIMAX_MODEL")),
       base_url_env:
         env("METADATA_LLM_BASE_URL_ENV") ||
-        (metadataProvider === "deepseek"
-          ? "DEEPSEEK_BASE_URL"
-          : "MINIMAX_BASE_URL"),
+        (metadataProvider === "deepseek" ? "DEEPSEEK_BASE_URL" : "MINIMAX_BASE_URL"),
       api_key_env:
         env("METADATA_LLM_API_KEY_ENV") ||
-        (metadataProvider === "deepseek"
-          ? "DEEPSEEK_API_KEY"
-          : "MINIMAX_API_KEY"),
+        (metadataProvider === "deepseek" ? "DEEPSEEK_API_KEY" : "MINIMAX_API_KEY"),
       enabled: true,
     }),
     image_parser: buildConfig({
@@ -180,54 +140,10 @@ export function getDefaultAppConfig(): AppConfig {
 }
 
 export async function getAppConfig(): Promise<AppConfig> {
-  const defaults = getDefaultAppConfig();
-  const supabase = getSupabaseServerClient();
-
-  if (!supabase) {
-    return defaults;
-  }
-
-  try {
-    const { data, error } = await supabase
-      .from("app_config")
-      .select("key, value")
-      .in("key", [...MODEL_CONFIG_KEYS]);
-
-    if (error) {
-      console.warn("[app_config] Supabase config unavailable, using env defaults", {
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
-        code: error.code,
-      });
-      return defaults;
-    }
-
-    const merged: AppConfig = { ...defaults };
-
-    for (const row of (data ?? []) as AppConfigRow[]) {
-      if (!isModelConfigKey(row.key)) {
-        continue;
-      }
-
-      const fallback = defaults[row.key];
-      merged[row.key] = buildConfig(fallback, row.value as RawProviderConfig);
-    }
-
-    return merged;
-  } catch (error) {
-    console.warn("[app_config] Failed to read Supabase config, using env defaults", {
-      name: error instanceof Error ? error.name : "UnknownError",
-      message: error instanceof Error ? error.message : String(error),
-      cause: error instanceof Error ? error.cause : undefined,
-    });
-    return defaults;
-  }
+  return getDefaultAppConfig();
 }
 
-export async function getModelConfig(
-  key: ModelConfigKey,
-): Promise<ModelProviderConfig> {
+export async function getModelConfig(key: ModelConfigKey): Promise<ModelProviderConfig> {
   const config = await getAppConfig();
   return config[key];
 }

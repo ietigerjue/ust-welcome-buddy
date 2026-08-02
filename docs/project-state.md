@@ -1,6 +1,6 @@
 # UST Buddy Project State
 
-Last updated: 2026-07-09
+Last updated: 2026-08-02
 
 This file is the current engineering snapshot for UST Buddy. Read it before making product, backend, retrieval, or deployment changes.
 
@@ -46,7 +46,7 @@ This file is the current engineering snapshot for UST Buddy. Read it before maki
 - `npm run check:env` checks required environment variable presence without printing values.
 - `npm run check:secrets` scans committed files for obvious secret patterns and checks whether real env files are tracked.
 - `docs/env-vars.md` documents variable purpose, required status, local/Vercel setup, and whether each value is secret.
-- `/admin/settings` can save provider API Keys and direct Base URLs as write-only backend encrypted secrets when `supabase/model-secrets.sql` has been applied and `MODEL_SECRET_ENCRYPTION_KEY` is configured. These values are never returned to the frontend and are not stored in `app_config`.
+- Model provider settings and secrets are runtime environment configuration only. Local development reads `.env.local`; production reads Vercel Environment Variables. `/admin/settings` is read-only and never saves provider configuration or secrets.
 - `docs/closed-source.md` records proprietary usage restrictions and key rotation expectations if the repository is ever exposed publicly.
 - `docs/portfolio-readme.md` keeps a public-facing project description draft separate from the private root README.
 - No open-source license is currently present.
@@ -95,9 +95,9 @@ This file is the current engineering snapshot for UST Buddy. Read it before maki
 - `/admin/settings`
   - Not linked from the public navigation.
   - Protected by `ADMIN_IMPORT_TOKEN`.
-  - Lets admins load and save model configuration for `chat_llm`, `metadata_llm`, `image_parser`, and `embedding`.
-  - Stores provider/model/env variable names and non-secret settings in Supabase `app_config`.
-  - Supports write-only API Key and direct Base URL fields. These are encrypted server-side into `model_secrets`, never returned to the browser, and never stored in `app_config`.
+  - Lets admins inspect the effective environment configuration for `chat_llm`, `metadata_llm`, `image_parser`, and `embedding`.
+  - Is read-only. Provider/model/Base URL/API Key changes must be made in `.env.local` or Vercel Environment Variables, followed by a restart or redeploy.
+  - Never receives or displays real API Key or Base URL values.
 
 ## Knowledge Base Sources
 
@@ -111,13 +111,13 @@ This file is the current engineering snapshot for UST Buddy. Read it before maki
 ## Supabase Tables
 
 - `app_config`
-  - Stores non-secret provider/model configuration for `chat_llm`, `metadata_llm`, `image_parser`, and `embedding`.
+  - Legacy table retained for compatibility/history, but it no longer overrides runtime model configuration.
   - Expected fields are `key`, `value`, and `updated_at`.
   - SQL lives in `supabase/app-config.sql`.
   - `value` stores provider/model/base URL env var name/API key env var name only, never real API keys.
 
 - `model_secrets`
-  - Optional backend encrypted store for provider API Keys and direct Base URLs saved through `/admin/settings`.
+  - Legacy optional encrypted store retained in the database, but runtime model calls no longer read it.
   - SQL lives in `supabase/model-secrets.sql`.
   - Requires `MODEL_SECRET_ENCRYPTION_KEY`.
   - Stores encrypted values, IV, and auth tag only; real secret values are not returned by admin APIs.
@@ -141,7 +141,7 @@ This file is the current engineering snapshot for UST Buddy. Read it before maki
 
 ## AI Model Configuration
 
-Current default config is environment-driven. These defaults are operational details, not permanent architectural rules.
+Runtime model configuration is environment-only. Local development uses `.env.local`; Vercel uses project Environment Variables.
 
 Text generation default:
 
@@ -173,19 +173,17 @@ Embedding default:
 - `SEMANTIC_DUPLICATE_THRESHOLD` defaults to `0.82` for admin semantic duplicate review.
 - Optional network proxy: `HTTPS_PROXY` or `HTTP_PROXY`
 
-Future direction:
+Operational direction:
 
-- Use Supabase `app_config` for provider/model selection.
-- Keep API keys in environment variables only.
-- `/admin/settings` is available for provider/model configuration.
+- Keep provider/model selection and API credentials in server environment variables.
+- Use `/admin/settings` only to inspect effective variable names and configured status.
 - Record actual provider/model in question logs or model usage logs when available.
 
 Config reader:
 
-- `src/lib/appConfig.ts` reads Supabase `app_config` when available.
-- If Supabase is unavailable, the table is missing, or a config row is missing, it falls back to current environment defaults.
+- `src/lib/appConfig.ts` derives all four model configs from environment variables and does not read Supabase `app_config`.
 - Test with `npm run test:app-config`.
-- Model configuration QA script: `npm run test:model-config` reads all model configs, validates required fields and env var presence, temporarily updates `chat_llm`, verifies `getModelConfig()` sees the change, then restores the original row.
+- Model configuration QA script: `npm run test:model-config` validates that all model configs come from environment variables and checks required variable presence without calling real models.
 
 Model router:
 
@@ -195,8 +193,8 @@ Model router:
 - Runtime callers resolve API keys from the configured environment variable names server-side only.
 - Test with `npm run test:model-router`; the script does not call real model APIs.
 - Admin config API:
-  - `GET /api/admin/config` returns app_config settings or env fallback settings plus `keyConfigured` / `baseUrlConfigured` booleans.
-  - `PUT /api/admin/config` saves only non-secret fields: provider, model, env var names, endpoint env var name, dimensions, fallback provider, and enabled.
+  - `GET /api/admin/config` returns environment-derived settings plus `keyConfigured` / `baseUrlConfigured` booleans.
+  - `PUT /api/admin/config` returns `409` because runtime configuration is managed by `.env.local` or deployment environment variables.
   - Env-name fields must contain variable names only, not raw API keys, tokens, or URLs.
   - `npm run test:admin-config` checks the admin config API without calling real model APIs.
 - Runtime model calls check configured `api_key_env` / `base_url_env` before sending requests. Missing env variables return `Provider is configured but required environment variable is missing.` without exposing real key values.
@@ -257,8 +255,8 @@ The active next step is validating admin model configuration, tuning pgvector Hy
 - Use `docs/setup-checklist.md` and `docs/handoff.md` for collaborator onboarding.
 - Run `npm run check:env` during local setup.
 - Run `npm run check:secrets` before commits and before any repository visibility change.
-- Apply `supabase/app-config.sql` if the `app_config` table does not exist.
-- Use `/admin/settings` to load and save provider/model/env-var-name configuration.
+- Use `/admin/settings` to inspect environment-derived provider/model configuration and missing-variable status.
+- Change local model configuration in `.env.local` and restart the dev server; change production configuration in Vercel Environment Variables and redeploy.
 - Confirm or add `document_chunks.embedding vector(...)`.
 - Run `npm run embed:chunks`.
 - Ensure Supabase RPC `match_document_chunks` exists and returns the expected chunk fields.

@@ -32,8 +32,7 @@ async function loadLocalEnv() {
         process.env[key] ??= value;
       }
     } catch (error) {
-      const isMissingFile =
-        error instanceof Error && "code" in error && error.code === "ENOENT";
+      const isMissingFile = error instanceof Error && "code" in error && error.code === "ENOENT";
 
       if (!isMissingFile) {
         throw error;
@@ -43,10 +42,7 @@ async function loadLocalEnv() {
 }
 
 function getApiBaseUrl() {
-  return (process.env.ADMIN_CONFIG_API_BASE_URL || DEFAULT_BASE_URL).replace(
-    /\/+$/,
-    ""
-  );
+  return (process.env.ADMIN_CONFIG_API_BASE_URL || DEFAULT_BASE_URL).replace(/\/+$/, "");
 }
 
 async function readJson(response: Response) {
@@ -54,18 +50,24 @@ async function readJson(response: Response) {
 }
 
 function assertConfigShape(config: Record<string, unknown>) {
+  if (config.managedBy !== "environment") {
+    throw new Error("Expected config to be managed by environment variables.");
+  }
+
   for (const key of ["chat_llm", "metadata_llm", "image_parser", "embedding"]) {
-    if (!config[key] || typeof config[key] !== "object") {
+    const section = config[key];
+
+    if (!section || typeof section !== "object") {
       throw new Error(`Missing config section: ${key}`);
     }
 
-    const section = config[key] as Record<string, unknown>;
+    const value = section as Record<string, unknown>;
 
-    if (typeof section.api_key_env !== "string") {
+    if (typeof value.api_key_env !== "string") {
       throw new Error(`Missing api_key_env in section: ${key}`);
     }
 
-    if (typeof section.keyConfigured !== "boolean") {
+    if (typeof value.keyConfigured !== "boolean") {
       throw new Error(`Missing keyConfigured boolean in section: ${key}`);
     }
   }
@@ -81,105 +83,50 @@ async function main() {
   }
 
   const url = `${getApiBaseUrl()}/api/admin/config`;
-  const headers = {
+  const authorizedHeaders = {
     "Content-Type": "application/json",
     "x-admin-token": adminToken,
   };
 
-  console.log("[test:admin-config] GET config:", url);
+  const unauthorizedResponse = await fetch(url, { method: "GET" });
+
+  if (unauthorizedResponse.status !== 401) {
+    throw new Error(`Expected unauthorized GET to return 401, got ${unauthorizedResponse.status}.`);
+  }
 
   const getResponse = await fetch(url, {
     method: "GET",
-    headers,
+    headers: authorizedHeaders,
   });
   const currentConfig = await readJson(getResponse);
 
   if (!getResponse.ok) {
     throw new Error(
-      `GET /api/admin/config failed: ${getResponse.status} ${JSON.stringify(
-        currentConfig
-      )}`
+      `GET /api/admin/config failed: ${getResponse.status} ${JSON.stringify(currentConfig)}`,
     );
   }
 
   assertConfigShape(currentConfig);
-  console.log("[test:admin-config] GET success:", {
-    keys: Object.keys(currentConfig).filter((key) => key !== "warnings"),
-  });
+  console.log("[test:admin-config] GET environment config success");
 
-  console.log("[test:admin-config] verifying secret-field rejection");
-  const forbiddenResponse = await fetch(url, {
-    method: "PUT",
-    headers,
-    body: JSON.stringify({
-      ...currentConfig,
-      chat_llm: {
-        ...(currentConfig.chat_llm as Record<string, unknown>),
-        api_key: "should-not-save",
-      },
-    }),
-  });
-  const forbiddenBody = await readJson(forbiddenResponse);
-
-  if (forbiddenResponse.status !== 400) {
-    throw new Error(
-      `Expected forbidden api_key field to return 400, got ${
-        forbiddenResponse.status
-      }: ${JSON.stringify(forbiddenBody)}`
-    );
-  }
-
-  console.log("[test:admin-config] forbidden field rejected:", {
-    status: forbiddenResponse.status,
-    error: forbiddenBody.error,
-  });
-
-  console.log("[test:admin-config] verifying raw secret value rejection");
-  const rawSecretResponse = await fetch(url, {
-    method: "PUT",
-    headers,
-    body: JSON.stringify({
-      ...currentConfig,
-      chat_llm: {
-        ...(currentConfig.chat_llm as Record<string, unknown>),
-        api_key_env: "sk-should-not-save",
-      },
-    }),
-  });
-  const rawSecretBody = await readJson(rawSecretResponse);
-
-  if (rawSecretResponse.status !== 400) {
-    throw new Error(
-      `Expected raw secret-like api_key_env value to return 400, got ${
-        rawSecretResponse.status
-      }: ${JSON.stringify(rawSecretBody)}`
-    );
-  }
-
-  console.log("[test:admin-config] raw secret value rejected:", {
-    status: rawSecretResponse.status,
-    error: rawSecretBody.error,
-  });
-
-  console.log("[test:admin-config] PUT current config back");
   const putResponse = await fetch(url, {
     method: "PUT",
-    headers,
+    headers: authorizedHeaders,
     body: JSON.stringify(currentConfig),
   });
-  const savedConfig = await readJson(putResponse);
+  const putBody = await readJson(putResponse);
 
-  if (!putResponse.ok) {
+  if (putResponse.status !== 409) {
     throw new Error(
-      `PUT /api/admin/config failed: ${putResponse.status} ${JSON.stringify(
-        savedConfig
-      )}`
+      `Expected environment-managed PUT to return 409, got ${putResponse.status}: ${JSON.stringify(
+        putBody,
+      )}`,
     );
   }
 
-  assertConfigShape(savedConfig);
-  console.log("[test:admin-config] PUT success:", {
-    warnings: savedConfig.warnings ?? [],
+  console.log("[test:admin-config] PUT correctly disabled:", {
+    status: putResponse.status,
+    error: putBody.error,
   });
 }
 

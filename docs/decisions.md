@@ -14,9 +14,13 @@ The public/portfolio README is preserved separately as `docs/portfolio-readme.md
 
 Real environment files and credentials must stay outside Git. `.env.example` is committed as a placeholder-only template, while `.env.local`, `.env`, and `.env.*.local` are ignored. `npm run check:env` verifies environment variable presence without printing values, and `npm run check:secrets` checks tracked files for obvious secret patterns and tracked env files before commits or visibility changes.
 
-`app_config` remains non-secret by design. It stores provider/model metadata and environment variable names only. Real API keys, Supabase service role keys, Admin Tokens, Vercel tokens, provider keys, and proxy credentials must stay in `.env.local`, Vercel Environment Variables, or backend encrypted secret storage.
+`app_config` and `model_secrets` remain non-secret/legacy database structures, but they are no longer runtime configuration sources. Real API keys, Supabase service role keys, Admin Tokens, Vercel tokens, provider keys, and proxy credentials must stay in `.env.local` or Vercel Environment Variables.
 
-Backend model secret storage is intentionally separate from `app_config`. `/admin/settings` may accept direct provider API Keys and Base URLs as write-only inputs, but the API encrypts them into `model_secrets` using `MODEL_SECRET_ENCRYPTION_KEY`. GET responses return only configured booleans, never raw values. This lets authorized admins rotate provider credentials without exposing them through frontend state or non-secret configuration rows.
+## Runtime Model Configuration Is Environment-Only
+
+As of 2026-08-02, `.env.local` for local development and deployment environment variables for production are the only runtime sources for provider, model, Base URL, endpoint, and API Key configuration. Supabase `app_config` and `model_secrets` are retained as legacy data structures but no longer override runtime values.
+
+This removes split-brain configuration where a stale Supabase row could pair a DeepSeek model name with a MiniMax Base URL after `.env.local` had already been changed. `/admin/settings` is therefore read-only, and `PUT /api/admin/config` returns `409` with instructions to update the server environment and restart or redeploy.
 
 ## TanStack Start SSR
 
@@ -89,7 +93,7 @@ The endpoint is protected by `ADMIN_IMPORT_TOKEN`, processes only chunks whose `
 
 ## Configurable Model Providers
 
-Provider/model choices should be configurable rather than hardcoded in business logic. Chat answers, metadata extraction, image parsing, OCR/VLM behavior, and embeddings should move toward a provider/router/config architecture. `app_config` may store provider/model metadata and env var names, but real API keys must remain in environment variables or a secrets manager.
+Provider/model choices should be configurable rather than hardcoded in business logic. Chat answers, metadata extraction, image parsing, OCR/VLM behavior, and embeddings use the provider/router/config architecture, while the concrete runtime values come from server environment variables.
 
 ## Model Router Returns Non-Secret Descriptors
 
@@ -97,15 +101,15 @@ Provider/model choices should be configurable rather than hardcoded in business 
 
 Before any configured provider call, the router validates that the configured `api_key_env` and `base_url_env` names exist in `process.env`. Missing variables return the shared message `Provider is configured but required environment variable is missing.` plus the missing variable names. The error path reports env var names only and never logs or returns real API key values.
 
-## Admin Settings Keeps `app_config` Non-Secret
+## Admin Settings Is Read-Only
 
-`/admin/settings` lets admins change provider/model configuration without editing code, but it intentionally stores only provider names, model names, dimensions, fallback settings, and environment variable names in Supabase `app_config`. Real API keys stay in `.env.local`, Vercel Environment Variables, or another secrets manager. This keeps the admin UI useful while avoiding credential exposure through browser state, database rows, logs, or API responses.
+`/admin/settings` lets admins inspect the effective provider/model configuration and environment-variable presence without returning raw values. It does not persist changes. Local changes belong in `.env.local`; production changes belong in Vercel Environment Variables.
 
-The admin settings surface may show `api_key_env` and booleans such as `keyConfigured` / `baseUrlConfigured`, but it must not show real key values. If direct API Key or Base URL entry is needed, those fields are write-only and saved to `model_secrets`, not `app_config`. If `keyConfigured=false`, admins should configure the named variable in `.env.local` or Vercel Environment Variables, or save a write-only key after enabling backend encrypted storage.
+The admin settings surface may show `api_key_env` and booleans such as `keyConfigured` / `baseUrlConfigured`, but it must not show real key or Base URL values.
 
 ## Model Config Tests Avoid Real Model Calls
 
-Model configuration tests validate the configuration path rather than provider behavior. `npm run test:model-config` reads `app_config`, checks env-var-name wiring, temporarily changes `chat_llm` provider/model, verifies the read layer sees the change, and restores the original row. It does not call MiniMax, Jina, OCR, VLM, or any other paid model endpoint, which keeps the test safe to run during admin settings work.
+Model configuration tests validate the environment configuration path rather than provider behavior. `npm run test:model-config` checks that each routed config is environment-managed and that required variables are present. It does not write Supabase rows or call MiniMax, Jina, OCR, VLM, or any other paid model endpoint.
 
 ## Hybrid Search For `/api/chat`
 

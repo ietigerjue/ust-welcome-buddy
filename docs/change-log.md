@@ -2,6 +2,13 @@
 
 Important changes in reverse chronological order. Keep this file concise and update it whenever the project architecture or product surface changes.
 
+## 2026-08-02
+
+- Switched runtime model configuration to an environment-only source of truth. Supabase `app_config` and encrypted `model_secrets` no longer override `.env.local` or Vercel Environment Variables.
+- Removed cross-provider model fallback so MiniMax can never inherit a stale `DEEPSEEK_MODEL`, and DeepSeek can never inherit `MINIMAX_MODEL`.
+- Changed `/admin/settings` into a read-only environment status page and disabled `PUT /api/admin/config` with a clear `409` response, removing ambiguous backend model-setting saves.
+- Updated model configuration tests to verify environment sourcing without writing temporary Supabase config rows.
+
 ## 2026-07-09
 
 - Improved DeepSeek text LLM switching: env fallbacks now use `DEEPSEEK_BASE_URL`, `DEEPSEEK_API_KEY`, and `DEEPSEEK_MODEL` when DeepSeek is selected; chat provider errors no longer hard-code "MiniMax"; `check:env` accepts MiniMax or DeepSeek text LLM runtime config.

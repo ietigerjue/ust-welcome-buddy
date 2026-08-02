@@ -33,7 +33,7 @@ UST Buddy 将这些分散的新生生活资料整理为知识库问答体验。�
 - Hybrid Search with keyword retrieval and pgvector semantic retrieval
 - MiniMax answer generation grounded in retrieved context
 - Source references deduplicated by document
-- Admin document management and model configuration
+- Admin document management and read-only model configuration status
 - Question logging and retrieval/model observability
 
 - 以聊天框为核心的问答体验
@@ -43,7 +43,7 @@ UST Buddy 将这些分散的新生生活资料整理为知识库问答体验。�
 - 结合关键词检索和 pgvector 语义检索的 Hybrid Search
 - 使用 MiniMax 基于检索上下文生成回答
 - 按 document 去重展示来源引用
-- 后台支持文档管理和模型配置
+- 后台支持文档管理和模型环境配置状态查看
 - 支持问题日志、检索和模型使用观测
 
 ## Tech Stack / 技术栈
@@ -188,6 +188,10 @@ EMBEDDING_DIMENSIONS
 Do not commit real API keys, service role keys, admin tokens, or `.env.local`.
 
 请不要提交真实 API key、Supabase service role key、Admin Token 或 `.env.local`。
+
+Model runtime configuration is environment-only. After changing `.env.local`, restart the development server; after changing Vercel Environment Variables, redeploy the project. `/admin/settings` is a read-only status page.
+
+模型运行配置仅来自环境变量。修改 `.env.local` 后需要重启开发服务器；修改 Vercel Environment Variables 后需要重新部署。`/admin/settings` 只用于查看配置状态。
 
 ## Deployment / 部署
 

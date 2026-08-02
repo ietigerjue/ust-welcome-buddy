@@ -1,9 +1,4 @@
-import {
-  getModelConfig,
-  type ModelConfigKey,
-  type ModelProviderConfig,
-} from "./appConfig";
-import { getModelSecret } from "./secureModelSecrets";
+import { getModelConfig, type ModelConfigKey, type ModelProviderConfig } from "./appConfig";
 
 const DEFAULT_IMAGE_PARSER_ENDPOINT = "/v1/coding_plan/vlm";
 export const MISSING_PROVIDER_ENV_MESSAGE =
@@ -15,11 +10,7 @@ type ProcessLike = {
 
 type LlmConfigKey = Extract<ModelConfigKey, "chat_llm" | "metadata_llm">;
 
-export type RoutedProviderKind =
-  | "chat_llm"
-  | "metadata_llm"
-  | "embedding"
-  | "image_parser";
+export type RoutedProviderKind = "chat_llm" | "metadata_llm" | "embedding" | "image_parser";
 
 export type RoutedProvider = {
   kind: RoutedProviderKind;
@@ -60,11 +51,11 @@ export type ProviderRuntime = {
 };
 
 function getEnv(name: string) {
-  const processEnv = (globalThis as typeof globalThis & { process?: ProcessLike })
-    .process?.env?.[name];
-  const importMetaEnv = (
-    import.meta as ImportMeta & { env?: Record<string, string | undefined> }
-  ).env;
+  const processEnv = (globalThis as typeof globalThis & { process?: ProcessLike }).process?.env?.[
+    name
+  ];
+  const importMetaEnv = (import.meta as ImportMeta & { env?: Record<string, string | undefined> })
+    .env;
   const value = processEnv ?? importMetaEnv?.[name];
 
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
@@ -88,9 +79,7 @@ function getConfiguredApiKey(config: ModelProviderConfig) {
   return getEnv(config.api_key_env);
 }
 
-async function getRoutedProvider(
-  kind: RoutedProviderKind
-): Promise<RoutedProvider> {
+async function getRoutedProvider(kind: RoutedProviderKind): Promise<RoutedProvider> {
   const config = await getModelConfig(kind);
   const baseUrl = getConfiguredBaseUrl(config);
   const apiKey = getConfiguredApiKey(config);
@@ -108,9 +97,7 @@ async function getRoutedProvider(
   };
 }
 
-export async function getLLMProvider(
-  kind: LlmConfigKey = "chat_llm"
-): Promise<LLMProvider> {
+export async function getLLMProvider(kind: LlmConfigKey = "chat_llm"): Promise<LLMProvider> {
   const provider = await getRoutedProvider(kind);
 
   return {
@@ -128,8 +115,7 @@ export async function getEmbeddingProvider(): Promise<EmbeddingProvider> {
     ...provider,
     kind: "embedding",
     interface: "embeddings",
-    dimensions:
-      config.dimensions ?? parsePositiveInteger(getEnv("EMBEDDING_DIMENSIONS")),
+    dimensions: config.dimensions ?? parsePositiveInteger(getEnv("EMBEDDING_DIMENSIONS")),
   };
 }
 
@@ -151,7 +137,7 @@ export async function getImageParserProvider(): Promise<ImageParserProvider> {
 }
 
 export function resolveProviderRuntime(
-  provider: LLMProvider | EmbeddingProvider | ImageParserProvider
+  provider: LLMProvider | EmbeddingProvider | ImageParserProvider,
 ): ProviderRuntime {
   const configuredBaseUrl = getEnv(provider.baseUrlEnv);
 
@@ -165,24 +151,14 @@ export function resolveProviderRuntime(
 }
 
 export async function resolveProviderRuntimeWithStoredSecrets(
-  provider: LLMProvider | EmbeddingProvider | ImageParserProvider
+  provider: LLMProvider | EmbeddingProvider | ImageParserProvider,
 ): Promise<ProviderRuntime> {
-  const envRuntime = resolveProviderRuntime(provider);
-  const [storedApiKey, storedBaseUrl] = await Promise.all([
-    getModelSecret(provider.kind, "api_key"),
-    getModelSecret(provider.kind, "base_url"),
-  ]);
-
-  return {
-    ...envRuntime,
-    apiKey: storedApiKey || envRuntime.apiKey,
-    baseUrl: storedBaseUrl || envRuntime.baseUrl,
-  };
+  return resolveProviderRuntime(provider);
 }
 
 export function getMissingProviderEnvironmentKeys(
   provider: LLMProvider | EmbeddingProvider | ImageParserProvider,
-  runtime: ProviderRuntime = resolveProviderRuntime(provider)
+  runtime: ProviderRuntime = resolveProviderRuntime(provider),
 ) {
   return [
     [provider.apiKeyEnv, runtime.apiKey],
@@ -194,7 +170,7 @@ export function getMissingProviderEnvironmentKeys(
 
 export function getMissingProviderRuntimeKeys(
   provider: LLMProvider | EmbeddingProvider | ImageParserProvider,
-  runtime: ProviderRuntime = resolveProviderRuntime(provider)
+  runtime: ProviderRuntime = resolveProviderRuntime(provider),
 ) {
   const missingKeys = getMissingProviderEnvironmentKeys(provider, runtime);
 
@@ -209,17 +185,12 @@ export function getMissingProviderRuntimeKeys(
 
 export function getProviderRuntimeErrorMessage(
   provider: LLMProvider | EmbeddingProvider | ImageParserProvider,
-  runtime: ProviderRuntime = resolveProviderRuntime(provider)
+  runtime: ProviderRuntime = resolveProviderRuntime(provider),
 ) {
-  const missingEnvironmentKeys = getMissingProviderEnvironmentKeys(
-    provider,
-    runtime
-  );
+  const missingEnvironmentKeys = getMissingProviderEnvironmentKeys(provider, runtime);
 
   if (missingEnvironmentKeys.length > 0) {
-    return `${MISSING_PROVIDER_ENV_MESSAGE} Missing: ${missingEnvironmentKeys.join(
-      ", "
-    )}.`;
+    return `${MISSING_PROVIDER_ENV_MESSAGE} Missing: ${missingEnvironmentKeys.join(", ")}.`;
   }
 
   if (provider.kind !== "image_parser" && !runtime.model) {
@@ -231,7 +202,7 @@ export function getProviderRuntimeErrorMessage(
 
 export function assertProviderRuntimeConfigured(
   provider: LLMProvider | EmbeddingProvider | ImageParserProvider,
-  runtime: ProviderRuntime = resolveProviderRuntime(provider)
+  runtime: ProviderRuntime = resolveProviderRuntime(provider),
 ) {
   const message = getProviderRuntimeErrorMessage(provider, runtime);
 

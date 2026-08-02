@@ -1,6 +1,6 @@
 # UST Buddy Model Configuration
 
-UST Buddy should support replaceable providers for AI-related work. Provider and model choices must be read through configuration layers, not hardcoded in business logic.
+UST Buddy supports replaceable providers for AI-related work. Provider and model choices are routed through the configuration layer, with server environment variables as the only runtime source of truth.
 
 ## Configurable Model Types
 
@@ -9,7 +9,7 @@ UST Buddy should support replaceable providers for AI-related work. Provider and
 - `image_parser`: VLM/OCR/image understanding provider for image and long screenshot import.
 - `embedding`: embedding provider and model for pgvector retrieval.
 
-## Recommended Supabase Table
+## Legacy Supabase Table
 
 ```sql
 create table if not exists app_config (
@@ -19,7 +19,7 @@ create table if not exists app_config (
 );
 ```
 
-The concrete SQL for this project lives in `supabase/app-config.sql`.
+The concrete SQL lives in `supabase/app-config.sql`, but the table is retained only for compatibility/history and no longer overrides runtime configuration.
 
 ## Recommended Config Shape
 
@@ -58,13 +58,11 @@ This is an example shape and may reflect the current default deployment. It is n
 
 ## Secret Handling
 
-- `app_config` stores provider names, model names, env var names, dimensions, and fallback settings.
-- `app_config` must not store real API keys.
+- Runtime provider/model/Base URL/API Key values come only from `.env.local` or deployment environment variables.
+- Legacy `app_config` and `model_secrets` rows are not read by model calls.
 - `base_url_env`, `api_key_env`, and `endpoint_env` values must be environment variable names such as `DEEPSEEK_API_KEY`, not raw URLs, tokens, or API keys.
 - Real API keys must stay in `.env.local`, deployment environment variables, or backend encrypted secret storage.
-- Direct Base URLs entered in Admin Settings are treated as write-only runtime secrets and are stored with API keys in backend encrypted secret storage, not `app_config`.
-- Admin Settings may show provider/model/config fields and configured booleans, but must not reveal secret values.
-- Backend encrypted secret storage requires `supabase/model-secrets.sql` and `MODEL_SECRET_ENCRYPTION_KEY`.
+- Admin Settings shows provider/model/env-var names and configured booleans, but cannot edit or reveal secret values.
 
 ## Operational Rules
 
@@ -89,40 +87,32 @@ This is an example shape and may reflect the current default deployment. It is n
 - Router test script: `npm run test:model-router`.
 - Admin config API test script: `npm run test:admin-config`.
 - Model config QA script: `npm run test:model-config`.
-- Supabase rows override environment defaults when present.
-- Missing rows, missing table, or Supabase read errors fall back to current environment defaults.
-- If `DEEPSEEK_API_KEY` exists and no Supabase `app_config` row overrides chat or metadata config, the env fallback can route `chat_llm` and `metadata_llm` to `DEEPSEEK_BASE_URL`, `DEEPSEEK_API_KEY`, and `DEEPSEEK_MODEL`.
-- Existing Supabase `app_config` rows override env fallbacks. If switching from MiniMax to DeepSeek, update `/admin/settings` for `chat_llm` and `metadata_llm`, or the app may still call `MINIMAX_BASE_URL` with a DeepSeek model name.
+- `getAppConfig()` always returns environment-derived configuration. Supabase rows do not override it.
+- `CHAT_LLM_PROVIDER` or `LLM_PROVIDER` selects the chat provider; `METADATA_LLM_PROVIDER` or `LLM_PROVIDER` selects the metadata provider. If none is set, the default is `minimax`.
+- Text model fallback is provider-specific: MiniMax reads `MINIMAX_MODEL`, DeepSeek reads `DEEPSEEK_MODEL`. A model value from the other provider is never reused.
+- Switching providers requires updating the relevant environment variables and restarting the local server or redeploying production.
 - The reader returns env var names and env existence booleans only; it must not print or return secret values.
 - `getLLMProvider()`, `getEmbeddingProvider()`, and `getImageParserProvider()` return non-secret provider descriptors.
 - Before a provider call, `modelRouter` checks the configured `api_key_env` and `base_url_env` against `process.env`. Missing variables produce: `Provider is configured but required environment variable is missing.`
-- Before a provider call, `modelRouter` first tries backend encrypted secret storage for the selected config key, then falls back to the configured environment variable names.
+- Before a provider call, `modelRouter` resolves the configured environment variable names only.
 - Existing chat generation, metadata extraction, embedding generation, and image parser configuration use the router while preserving current provider behavior.
 - `/api/admin/embed-chunks` uses the same embedding provider configuration as `npm run embed:chunks` and `searchVectorKnowledgeBase`.
 - The current image parser endpoint does not require a model field at runtime; API key and base URL remain required.
-- `/api/admin/config` rejects raw secret-like fields such as `api_key`, `secret`, `token`, and `password`.
-- `/api/admin/config` accepts only write-only secret fields named `api_key_value` and `base_url_value`. These values are encrypted server-side into `model_secrets`, never saved to `app_config`, never returned by GET, and cleared from the Admin Settings form after save.
-- `/api/admin/config` only persists provider, model, base URL env var name, API key env var name, endpoint env var name, dimensions, fallback provider, and enabled.
-- Changing embedding dimensions returns a warning because it requires rebuilding `document_chunks.embedding` and the pgvector RPC.
-- `npm run test:model-config` does not call real models. It temporarily updates `chat_llm` provider/model in `app_config`, verifies `getModelConfig("chat_llm")` reads the new values, and restores the original row.
+- `GET /api/admin/config` reports environment-derived config and presence booleans without returning values.
+- `PUT /api/admin/config` is disabled and returns `409` with environment update instructions.
+- `npm run test:model-config` does not call real models or write Supabase rows. It verifies that all routed configs are environment-managed.
 
 ## Admin Settings Fields
 
-`/admin/settings` lets admins view and update:
+`/admin/settings` lets admins view:
 
 - provider
 - model
 - base URL env var name
 - API key env var name
 - `keyConfigured` true/false status for the named API key env var
-- write-only direct API Key and Base URL fields, which are never populated from the server
 - dimensions for embeddings
 - fallback provider
 - enabled
 
-It should not let admins view stored raw API keys in the browser.
-
-When `keyConfigured=false`, configure the named API key variable in `.env.local`
-for local development, Vercel Environment Variables for deployment, or save a
-write-only key to backend encrypted secret storage after applying
-`supabase/model-secrets.sql`.
+It does not save configuration. When `keyConfigured=false`, configure the named API key variable in `.env.local` for local development or Vercel Environment Variables for deployment, then restart or redeploy.
