@@ -27,6 +27,8 @@ type ConfigItem = {
   enabled?: boolean;
   baseUrlConfigured?: boolean;
   keyConfigured?: boolean;
+  storedBaseUrlConfigured?: boolean;
+  storedKeyConfigured?: boolean;
 };
 
 type ConfigForm = Record<ConfigKey, ConfigItem>;
@@ -107,6 +109,8 @@ function normalizeConfigItem(value: ConfigResponse[ConfigKey]): ConfigItem {
     enabled: value?.enabled ?? true,
     baseUrlConfigured: value?.baseUrlConfigured ?? false,
     keyConfigured: value?.keyConfigured ?? false,
+    storedBaseUrlConfigured: value?.storedBaseUrlConfigured ?? false,
+    storedKeyConfigured: value?.storedKeyConfigured ?? false,
   };
 }
 
@@ -119,11 +123,20 @@ function normalizeConfigResponse(data: ConfigResponse): ConfigForm {
   };
 }
 
-function toPayload(form: ConfigForm) {
+function getFormDataString(formData: FormData, name: string) {
+  const value = formData.get(name);
+
+  return typeof value === "string" && value.trim() ? value.trim() : "";
+}
+
+function toPayload(form: ConfigForm, formData: FormData) {
   return Object.fromEntries(
     CONFIG_SECTIONS.map(({ key, showDimensions }) => {
       const item = form[key];
-      const payload: ConfigItem = {
+      const payload: ConfigItem & {
+        api_key_value?: string;
+        base_url_value?: string;
+      } = {
         provider: item.provider.trim(),
         model: item.model.trim(),
         base_url_env: item.base_url_env.trim(),
@@ -135,6 +148,17 @@ function toPayload(form: ConfigForm) {
 
       if (showDimensions && item.dimensions) {
         payload.dimensions = item.dimensions;
+      }
+
+      const apiKeyValue = getFormDataString(formData, `${key}.api_key_value`);
+      const baseUrlValue = getFormDataString(formData, `${key}.base_url_value`);
+
+      if (apiKeyValue) {
+        payload.api_key_value = apiKeyValue;
+      }
+
+      if (baseUrlValue) {
+        payload.base_url_value = baseUrlValue;
       }
 
       return [key, payload];
@@ -183,6 +207,8 @@ function AdminSettingsPage() {
 
   async function saveConfig(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const formElement = event.currentTarget;
+    const payload = toPayload(form, new FormData(formElement));
     setSaveStatus("saving");
     setMessage("");
     setWarnings([]);
@@ -194,7 +220,7 @@ function AdminSettingsPage() {
           "Content-Type": "application/json",
           "x-admin-token": adminToken,
         },
-        body: JSON.stringify(toPayload(form)),
+        body: JSON.stringify(payload),
       });
       const data = (await response.json().catch(() => ({}))) as ConfigResponse;
 
@@ -207,6 +233,11 @@ function AdminSettingsPage() {
       setSaveStatus("success");
       setLoadStatus("success");
       setMessage("Config saved and reloaded.");
+      for (const input of formElement.querySelectorAll<HTMLInputElement>(
+        "input[data-secret-write='true']"
+      )) {
+        input.value = "";
+      }
     } catch (error) {
       setSaveStatus("error");
       setMessage(
@@ -282,10 +313,10 @@ function AdminSettingsPage() {
               Security note
             </div>
             <p className="mt-1">
-              API keys are stored only in environment variables. This page only
-              stores provider/model/env variable names. If keyConfigured is
-              false, configure the named key in .env.local or Vercel Environment
-              Variables.
+              API keys and direct Base URLs can be saved only to backend
+              encrypted secret storage. They are write-only: this page never
+              receives or displays stored values. app_config stores only
+              provider/model/env variable names and non-secret settings.
             </p>
           </div>
 
@@ -301,6 +332,7 @@ function AdminSettingsPage() {
           {CONFIG_SECTIONS.map((section) => (
             <ConfigSection
               key={section.key}
+              configKey={section.key}
               title={section.title}
               description={section.description}
               value={form[section.key]}
@@ -312,7 +344,7 @@ function AdminSettingsPage() {
 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-xs text-muted-foreground">
-              保存后配置会写入 Supabase app_config。真实密钥仍需在 .env.local 或 Vercel Environment Variables 配置。
+              保存后非敏感配置会写入 Supabase app_config。API Key 和直接 Base URL 只会写入后端加密存储，不会回显。
             </p>
             <button
               type="submit"
@@ -334,6 +366,7 @@ function AdminSettingsPage() {
 }
 
 function ConfigSection({
+  configKey,
   title,
   description,
   value,
@@ -341,6 +374,7 @@ function ConfigSection({
   requireModel,
   onChange,
 }: {
+  configKey: ConfigKey;
   title: string;
   description: string;
   value: ConfigItem;
@@ -397,6 +431,7 @@ function ConfigSection({
           <ConfigStatus
             label="baseUrlConfigured"
             configured={value.baseUrlConfigured}
+            storedConfigured={value.storedBaseUrlConfigured}
             envName={value.base_url_env}
           />
         </ConfigField>
@@ -411,8 +446,37 @@ function ConfigSection({
           <ConfigStatus
             label="keyConfigured"
             configured={value.keyConfigured}
+            storedConfigured={value.storedKeyConfigured}
             envName={value.api_key_env}
           />
+        </ConfigField>
+
+        <ConfigField label="Direct Base URL (write-only)">
+          <input
+            name={`${configKey}.base_url_value`}
+            data-secret-write="true"
+            type="url"
+            autoComplete="off"
+            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/10"
+            placeholder="https://api.example.com"
+          />
+          <span className="text-[11px] text-muted-foreground">
+            留空表示不修改已保存的后端 Base URL。
+          </span>
+        </ConfigField>
+
+        <ConfigField label="API Key (write-only)">
+          <input
+            name={`${configKey}.api_key_value`}
+            data-secret-write="true"
+            type="password"
+            autoComplete="off"
+            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/10"
+            placeholder="保存后不会回显"
+          />
+          <span className="text-[11px] text-muted-foreground">
+            留空表示不修改已保存的后端 API Key。
+          </span>
         </ConfigField>
 
         <ConfigField label="endpoint_env">
@@ -481,10 +545,12 @@ function ConfigField({
 function ConfigStatus({
   label,
   configured,
+  storedConfigured,
   envName,
 }: {
   label: string;
   configured?: boolean;
+  storedConfigured?: boolean;
   envName: string;
 }) {
   return (
@@ -495,8 +561,9 @@ function ConfigStatus({
     >
       {label}: {configured ? "true" : "false"}
       {envName ? ` · ${envName}` : ""}
+      {storedConfigured ? " · backend secure store" : ""}
       {!configured
-        ? " · 请在 .env.local 或 Vercel Environment Variables 配置。"
+        ? " · 请在 .env.local / Vercel Env 或后端安全存储中配置。"
         : ""}
     </span>
   );

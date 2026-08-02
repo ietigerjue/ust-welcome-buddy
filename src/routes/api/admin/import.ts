@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { hashContent } from "@/lib/contentHash";
 import { getSupabaseServerClient } from "@/lib/supabaseServer";
 
 const MIN_CHUNK_LENGTH = 800;
@@ -22,6 +23,7 @@ type ImportResponse =
       documentId: string;
       slug: string;
       chunkCount: number;
+      warnings?: string[];
     }
   | {
       error: string;
@@ -208,6 +210,46 @@ function chunkContent(content: string) {
   return chunks;
 }
 
+function isUniqueConflict(error: { code?: string; message?: string }) {
+  return (
+    error.code === "23505" ||
+    error.message?.toLowerCase().includes("duplicate key") ||
+    error.message?.toLowerCase().includes("unique constraint")
+  );
+}
+
+function isMissingContentHashColumn(error: { message?: string }) {
+  const message = error.message?.toLowerCase() ?? "";
+
+  return message.includes("content_hash") && message.includes("schema cache");
+}
+
+function dedupeChunksByHash(chunks: string[]) {
+  const seen = new Set<string>();
+  const deduped: Array<{ content: string; contentHash: string }> = [];
+  let skipped = 0;
+
+  for (const chunk of chunks) {
+    const contentHash = hashContent(chunk);
+
+    if (seen.has(contentHash)) {
+      skipped += 1;
+      continue;
+    }
+
+    seen.add(contentHash);
+    deduped.push({
+      content: chunk,
+      contentHash,
+    });
+  }
+
+  return {
+    chunks: deduped,
+    skipped,
+  };
+}
+
 export const Route = createFileRoute("/api/admin/import")({
   server: {
     handlers: {
@@ -250,31 +292,82 @@ export const Route = createFileRoute("/api/admin/import")({
         const keywords = normalizeKeywords(body.keywords);
         const summary = getString(body.summary);
         const slug = generateSlug(title);
-        const chunks = chunkContent(content);
+        const warnings: string[] = [];
+        const documentContentHash = hashContent(content);
+        const chunkDedupeResult = dedupeChunksByHash(chunkContent(content));
+        const chunks = chunkDedupeResult.chunks;
+
+        if (chunkDedupeResult.skipped > 0) {
+          warnings.push(
+            `Skipped ${chunkDedupeResult.skipped} duplicate chunks within this document.`
+          );
+        }
+
         const updatedAt =
           normalizeDate(body.updated_at) ||
           normalizeDate(body.updatedAt) ||
           getTodayDate();
 
-        const { data: upsertedDocument, error: documentError } = await supabase
+        const { data: duplicateDocuments, error: duplicateCheckError } =
+          await supabase
+            .from("documents")
+            .select("id, slug, title")
+            .eq("content_hash", documentContentHash)
+            .limit(1);
+
+        if (duplicateCheckError) {
+          if (isMissingContentHashColumn(duplicateCheckError)) {
+            warnings.push(
+              "Duplicate document check skipped because documents.content_hash is missing. Run supabase/deduplication.sql."
+            );
+          } else {
+            warnings.push(
+              `Could not check duplicate documents: ${duplicateCheckError.message}`
+            );
+          }
+        } else if ((duplicateDocuments ?? []).length > 0) {
+          warnings.push("A document with similar content already exists.");
+        }
+
+        const documentPayload = {
+          slug,
+          title,
+          category,
+          source,
+          source_url: sourceUrl,
+          source_type: sourceType,
+          status: "ready",
+          updated_at: updatedAt,
+          content_hash: documentContentHash,
+        };
+
+        let { data: upsertedDocument, error: documentError } = await supabase
           .from("documents")
-          .upsert(
-            {
-              slug,
-              title,
-              category,
-              source,
-              source_url: sourceUrl,
-              source_type: sourceType,
-              status: "ready",
-              updated_at: updatedAt,
-            },
-            {
-              onConflict: "slug",
-            }
-          )
+          .upsert(documentPayload, {
+            onConflict: "slug",
+          })
           .select("id")
           .single();
+
+        if (documentError && isMissingContentHashColumn(documentError)) {
+          warnings.push(
+            "Imported without documents.content_hash because the column is missing. Run supabase/deduplication.sql."
+          );
+
+          const { content_hash: _contentHash, ...legacyDocumentPayload } =
+            documentPayload;
+
+          const retryResult = await supabase
+            .from("documents")
+            .upsert(legacyDocumentPayload, {
+              onConflict: "slug",
+            })
+            .select("id")
+            .single();
+
+          upsertedDocument = retryResult.data;
+          documentError = retryResult.error;
+        }
 
         if (documentError || !upsertedDocument?.id) {
           return json(
@@ -302,7 +395,8 @@ export const Route = createFileRoute("/api/admin/import")({
           const chunkRows = chunks.map((chunk, index) => ({
             document_id: documentId,
             chunk_index: index,
-            content: chunk,
+            content: chunk.content,
+            content_hash: chunk.contentHash,
             keywords,
             metadata: {
               slug,
@@ -314,23 +408,63 @@ export const Route = createFileRoute("/api/admin/import")({
               updated_at: updatedAt,
               summary,
               import_source: "admin_api",
-              char_count: chunk.length,
+              char_count: chunk.content.length,
             },
           }));
 
-          const { error: insertChunksError } = await supabase
-            .from("document_chunks")
-            .insert(chunkRows);
+          let insertedChunkCount = 0;
 
-          if (insertChunksError) {
-            return json({ error: insertChunksError.message }, { status: 500 });
+          for (const chunkRow of chunkRows) {
+            let { error: insertChunkError } = await supabase
+              .from("document_chunks")
+              .insert(chunkRow);
+
+            if (
+              insertChunkError &&
+              isMissingContentHashColumn(insertChunkError)
+            ) {
+              warnings.push(
+                `Inserted chunk ${chunkRow.chunk_index} without content_hash because document_chunks.content_hash is missing. Run supabase/deduplication.sql.`
+              );
+
+              const { content_hash: _contentHash, ...legacyChunkRow } =
+                chunkRow;
+
+              const retryResult = await supabase
+                .from("document_chunks")
+                .insert(legacyChunkRow);
+
+              insertChunkError = retryResult.error;
+            }
+
+            if (!insertChunkError) {
+              insertedChunkCount += 1;
+              continue;
+            }
+
+            if (isUniqueConflict(insertChunkError)) {
+              warnings.push(
+                `Skipped duplicate chunk at index ${chunkRow.chunk_index}.`
+              );
+              continue;
+            }
+
+            return json({ error: insertChunkError.message }, { status: 500 });
           }
+
+          return json({
+            documentId,
+            slug,
+            chunkCount: insertedChunkCount,
+            warnings: warnings.length > 0 ? warnings : undefined,
+          });
         }
 
         return json({
           documentId,
           slug,
-          chunkCount: chunks.length,
+          chunkCount: 0,
+          warnings: warnings.length > 0 ? warnings : undefined,
         });
       },
     },

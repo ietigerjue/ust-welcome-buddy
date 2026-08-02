@@ -1,7 +1,7 @@
 import {
   assertProviderRuntimeConfigured,
   getLLMProvider,
-  resolveProviderRuntime,
+  resolveProviderRuntimeWithStoredSecrets,
 } from "./modelRouter";
 
 const ALLOWED_CATEGORIES = [
@@ -229,7 +229,7 @@ async function extractTextWithTesseract(file: File) {
 
 async function generateMetadataWithMiniMax(content: string) {
   const provider = await getLLMProvider("metadata_llm");
-  const runtime = resolveProviderRuntime(provider);
+  const runtime = await resolveProviderRuntimeWithStoredSecrets(provider);
   assertProviderRuntimeConfigured(provider, runtime);
 
   const { default: OpenAI } = await import("openai");

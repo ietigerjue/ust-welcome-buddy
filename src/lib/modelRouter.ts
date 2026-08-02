@@ -3,6 +3,7 @@ import {
   type ModelConfigKey,
   type ModelProviderConfig,
 } from "./appConfig";
+import { getModelSecret } from "./secureModelSecrets";
 
 const DEFAULT_IMAGE_PARSER_ENDPOINT = "/v1/coding_plan/vlm";
 export const MISSING_PROVIDER_ENV_MESSAGE =
@@ -160,6 +161,22 @@ export function resolveProviderRuntime(
     model: provider.model,
     endpoint: "endpoint" in provider ? provider.endpoint : undefined,
     dimensions: "dimensions" in provider ? provider.dimensions : undefined,
+  };
+}
+
+export async function resolveProviderRuntimeWithStoredSecrets(
+  provider: LLMProvider | EmbeddingProvider | ImageParserProvider
+): Promise<ProviderRuntime> {
+  const envRuntime = resolveProviderRuntime(provider);
+  const [storedApiKey, storedBaseUrl] = await Promise.all([
+    getModelSecret(provider.kind, "api_key"),
+    getModelSecret(provider.kind, "base_url"),
+  ]);
+
+  return {
+    ...envRuntime,
+    apiKey: storedApiKey || envRuntime.apiKey,
+    baseUrl: storedBaseUrl || envRuntime.baseUrl,
   };
 }
 

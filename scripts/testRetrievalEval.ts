@@ -1,19 +1,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import {
-  searchSupabaseKnowledgeBase,
-  type SupabaseKnowledgeDocument,
-} from "../src/lib/searchSupabaseKnowledgeBase";
-import {
-  searchVectorKnowledgeBase,
-  type VectorKnowledgeChunk,
-} from "../src/lib/searchVectorKnowledgeBase";
+  searchHybridKnowledgeBase,
+  type HybridKnowledgeDocument as HybridResult,
+} from "../src/lib/hybridSearch";
 
-const HYBRID_CONTEXT_LIMIT = 6;
 const PRINT_RESULT_LIMIT = 5;
-const KEYWORD_SCORE_WEIGHT = 0.5;
-const VECTOR_SCORE_WEIGHT = 0.5;
-const HYBRID_BONUS = 0.15;
 
 type ExpectedBehavior =
   | "should_answer"
@@ -26,24 +18,6 @@ type RetrievalEvalCase = {
   expected_category: string;
   expected_document_keywords: string[];
   expected_behavior: ExpectedBehavior;
-};
-
-type HybridResult = {
-  id: string;
-  chunk_id?: string;
-  document_id?: string;
-  slug?: string;
-  title: string;
-  category: string;
-  content: string;
-  source: string;
-  source_url?: string;
-  source_type?: string;
-  updated_at?: string;
-  score?: number;
-  similarity?: number;
-  hybridScore?: number;
-  retrieval_type?: string;
 };
 
 const EVAL_CASES: RetrievalEvalCase[] = [
@@ -326,166 +300,8 @@ async function loadLocalEnv() {
   }
 }
 
-function getChunkKey(document: HybridResult) {
-  if (document.chunk_id) {
-    return document.chunk_id;
-  }
-
-  const documentKey = document.document_id ?? document.id;
-  return `${documentKey}:${document.content.slice(0, 80)}`;
-}
-
-function normalizeScore(value: number | undefined, maxValue: number) {
-  if (!value || maxValue <= 0) {
-    return 0;
-  }
-
-  return value / maxValue;
-}
-
-function toKeywordResult(document: SupabaseKnowledgeDocument): HybridResult {
-  return {
-    id: document.id,
-    chunk_id: document.chunk_id,
-    document_id: document.document_id,
-    slug: document.slug,
-    title: document.title,
-    category: document.category,
-    content: document.content,
-    source: document.source,
-    source_url: document.source_url,
-    updated_at: document.updated_at,
-    score: document.score,
-    retrieval_type: "keyword",
-  };
-}
-
-function toVectorResult(document: VectorKnowledgeChunk): HybridResult {
-  return {
-    id: document.chunk_id,
-    chunk_id: document.chunk_id,
-    document_id: document.document_id,
-    slug: document.slug,
-    title: document.title,
-    category: document.category,
-    content: document.content,
-    source: document.source,
-    source_url: document.source_url,
-    source_type: document.source_type,
-    updated_at: document.updated_at,
-    score: document.score,
-    similarity: document.similarity,
-    retrieval_type: document.retrieval_type,
-  };
-}
-
-function mergeHybridResults({
-  keywordDocuments,
-  vectorDocuments,
-}: {
-  keywordDocuments: HybridResult[];
-  vectorDocuments: HybridResult[];
-}) {
-  const maxKeywordScore = Math.max(
-    0,
-    ...keywordDocuments.map((document) => document.score ?? 0)
-  );
-  const map = new Map<
-    string,
-    {
-      document: HybridResult;
-      keywordScore?: number;
-      vectorSimilarity?: number;
-      hasKeyword: boolean;
-      hasVector: boolean;
-    }
-  >();
-
-  for (const document of keywordDocuments) {
-    const key = getChunkKey(document);
-
-    map.set(key, {
-      document,
-      keywordScore: document.score,
-      hasKeyword: true,
-      hasVector: false,
-    });
-  }
-
-  for (const document of vectorDocuments) {
-    const key = getChunkKey(document);
-    const existing = map.get(key);
-
-    if (!existing) {
-      map.set(key, {
-        document,
-        vectorSimilarity: document.similarity,
-        hasKeyword: false,
-        hasVector: true,
-      });
-      continue;
-    }
-
-    existing.vectorSimilarity = document.similarity;
-    existing.hasVector = true;
-    existing.document = {
-      ...document,
-      ...existing.document,
-      similarity: document.similarity,
-      score: existing.keywordScore,
-      source_type: existing.document.source_type || document.source_type,
-    };
-  }
-
-  return Array.from(map.values())
-    .map((result) => {
-      const hybridScore =
-        normalizeScore(result.keywordScore, maxKeywordScore) *
-          KEYWORD_SCORE_WEIGHT +
-        (result.vectorSimilarity ?? 0) *
-          VECTOR_SCORE_WEIGHT +
-        (result.hasKeyword && result.hasVector ? HYBRID_BONUS : 0);
-
-      return {
-        ...result.document,
-        score: result.keywordScore,
-        similarity: result.vectorSimilarity,
-        hybridScore,
-      };
-    })
-    .sort((a, b) => (b.hybridScore ?? 0) - (a.hybridScore ?? 0))
-    .slice(0, HYBRID_CONTEXT_LIMIT);
-}
-
 async function runHybridSearch(question: string) {
-  const [keywordResult, vectorResult] = await Promise.allSettled([
-    searchSupabaseKnowledgeBase(question),
-    searchVectorKnowledgeBase(question),
-  ]);
-
-  const keywordDocuments =
-    keywordResult.status === "fulfilled"
-      ? keywordResult.value.map(toKeywordResult)
-      : [];
-  const vectorDocuments =
-    vectorResult.status === "fulfilled"
-      ? vectorResult.value.map(toVectorResult)
-      : [];
-
-  if (keywordResult.status === "rejected") {
-    const details = getErrorDetails(keywordResult.reason);
-    console.error("[test:retrieval] keyword search failed:", details);
-  }
-
-  if (vectorResult.status === "rejected") {
-    const details = getErrorDetails(vectorResult.reason);
-    console.error("[test:retrieval] vector search failed:", details);
-  }
-
-  return mergeHybridResults({
-    keywordDocuments,
-    vectorDocuments,
-  });
+  return searchHybridKnowledgeBase(question);
 }
 
 function normalizeText(value: string | undefined) {
@@ -645,4 +461,3 @@ main().catch((error) => {
 
   process.exitCode = 1;
 });
-

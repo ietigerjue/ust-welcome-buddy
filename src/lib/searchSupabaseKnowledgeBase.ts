@@ -88,12 +88,14 @@ type SupabaseDocument = {
   category?: string | null;
   source?: string | null;
   source_url?: string | null;
+  source_type?: string | null;
   updated_at?: string | null;
 };
 
 type SupabaseChunkRow = {
   id: string;
   content: string | null;
+  content_hash: string | null;
   keywords: string[] | null;
   chunk_index: number | null;
   documents: SupabaseDocument | SupabaseDocument[] | null;
@@ -103,10 +105,13 @@ export type SupabaseKnowledgeDocument = KnowledgeDocument & {
   chunk_id: string;
   document_id: string;
   slug: string;
+  chunk_index: number;
   chunkIndex: number;
   sourceUrl: string;
   updated_at: string;
   source_url: string;
+  source_type: string;
+  content_hash: string;
   score: number;
   matchedTerms: string[];
 };
@@ -282,9 +287,12 @@ function toKnowledgeDocument(
     title: document?.title ?? "Untitled document",
     category: document?.category ?? "",
     content: row.content ?? "",
+    content_hash: row.content_hash ?? "",
     source: document?.source ?? "",
+    source_type: document?.source_type ?? "",
     updatedAt,
     keywords: row.keywords ?? [],
+    chunk_index: row.chunk_index ?? 0,
     chunkIndex: row.chunk_index ?? 0,
     sourceUrl,
     updated_at: updatedAt,
@@ -313,9 +321,10 @@ export async function searchSupabaseKnowledgeBase(query: string) {
       [
         "id",
         "content",
+        "content_hash",
         "keywords",
         "chunk_index",
-        "documents(id, slug, title, category, source, source_url, updated_at)",
+        "documents(id, slug, title, category, source, source_url, source_type, updated_at)",
       ].join(", ")
     )
     .limit(FETCH_LIMIT);
@@ -332,7 +341,37 @@ export async function searchSupabaseKnowledgeBase(query: string) {
       ...scoreChunk(row, terms),
     }))
     .filter((result) => result.score > 0)
-    .sort((a, b) => b.score - a.score)
+    .sort((a, b) => {
+      const scoreDelta = b.score - a.score;
+
+      if (scoreDelta !== 0) {
+        return scoreDelta;
+      }
+
+      const aDocument = getJoinedDocument(a.row);
+      const bDocument = getJoinedDocument(b.row);
+      const documentDelta = (aDocument?.id ?? "").localeCompare(
+        bDocument?.id ?? "",
+        "en",
+        { numeric: true, sensitivity: "base" }
+      );
+
+      if (documentDelta !== 0) {
+        return documentDelta;
+      }
+
+      const chunkIndexDelta =
+        (a.row.chunk_index ?? 0) - (b.row.chunk_index ?? 0);
+
+      if (chunkIndexDelta !== 0) {
+        return chunkIndexDelta;
+      }
+
+      return a.row.id.localeCompare(b.row.id, "en", {
+        numeric: true,
+        sensitivity: "base",
+      });
+    })
     .slice(0, MAX_RESULTS)
     .map((result) =>
       toKnowledgeDocument(result.row, result.score, result.matchedTerms)

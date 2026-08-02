@@ -7,6 +7,10 @@ import {
   type ModelConfigKey,
   type ModelProviderConfig,
 } from "@/lib/appConfig";
+import {
+  getModelSecretStatus,
+  upsertModelSecret,
+} from "@/lib/secureModelSecrets";
 import { getSupabaseServerClient } from "@/lib/supabaseServer";
 
 type ConfigValue = {
@@ -20,6 +24,8 @@ type ConfigValue = {
   enabled?: boolean;
   baseUrlConfigured?: boolean;
   keyConfigured?: boolean;
+  storedBaseUrlConfigured?: boolean;
+  storedKeyConfigured?: boolean;
 };
 
 type ConfigResponse =
@@ -45,9 +51,15 @@ const ALLOWED_CONFIG_FIELDS = new Set([
   "fallback_provider",
   "enabled",
 ]);
+const WRITE_ONLY_SECRET_FIELDS = new Set([
+  "api_key_value",
+  "base_url_value",
+]);
 const READONLY_STATUS_FIELDS = new Set([
   "baseUrlConfigured",
   "keyConfigured",
+  "storedBaseUrlConfigured",
+  "storedKeyConfigured",
 ]);
 const FORBIDDEN_SECRET_FIELDS = new Set([
   "api_key",
@@ -151,6 +163,20 @@ function looksLikeSecretValue(value: string) {
   return SECRET_VALUE_PATTERN.test(value.trim());
 }
 
+function getWriteOnlyString(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : "";
+}
+
+function isValidBaseUrl(value: string) {
+  try {
+    const url = new URL(value);
+
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 function sanitizeConfigValue(value: unknown): ConfigValue {
   if (!isRecord(value)) {
     return {
@@ -251,11 +277,12 @@ function validateConfig(config: Partial<Record<ModelConfigKey, ConfigValue>>) {
   return errors;
 }
 
-function stripRuntimeFields(config: AppConfig): Record<ModelConfigKey, ConfigValue> {
-  return Object.fromEntries(
-    MODEL_CONFIG_KEYS.map((key) => {
+async function stripRuntimeFields(config: AppConfig): Promise<Record<ModelConfigKey, ConfigValue>> {
+  const entries = await Promise.all(
+    MODEL_CONFIG_KEYS.map(async (key) => {
       const value = config[key];
       const envStatus = getConfigEnvStatus(value);
+      const storedStatus = await getModelSecretStatus(key);
 
       return [
         key,
@@ -268,12 +295,18 @@ function stripRuntimeFields(config: AppConfig): Record<ModelConfigKey, ConfigVal
           dimensions: value.dimensions,
           fallback_provider: value.fallback_provider,
           enabled: value.enabled,
-          baseUrlConfigured: envStatus.baseUrlEnvExists,
-          keyConfigured: envStatus.apiKeyEnvExists,
+          baseUrlConfigured:
+            envStatus.baseUrlEnvExists || storedStatus.baseUrlConfigured,
+          keyConfigured:
+            envStatus.apiKeyEnvExists || storedStatus.apiKeyConfigured,
+          storedBaseUrlConfigured: storedStatus.baseUrlConfigured,
+          storedKeyConfigured: storedStatus.apiKeyConfigured,
         },
       ];
     })
-  ) as Record<ModelConfigKey, ConfigValue>;
+  );
+
+  return Object.fromEntries(entries) as Record<ModelConfigKey, ConfigValue>;
 }
 
 function hasUnexpectedFields(value: unknown) {
@@ -283,8 +316,43 @@ function hasUnexpectedFields(value: unknown) {
 
   return Object.keys(value).find(
     (field) =>
-      !ALLOWED_CONFIG_FIELDS.has(field) && !READONLY_STATUS_FIELDS.has(field)
+      !ALLOWED_CONFIG_FIELDS.has(field) &&
+      !WRITE_ONLY_SECRET_FIELDS.has(field) &&
+      !READONLY_STATUS_FIELDS.has(field)
   );
+}
+
+async function saveWriteOnlySecrets(body: Record<string, unknown>) {
+  for (const key of MODEL_CONFIG_KEYS) {
+    const value = body[key];
+
+    if (!isRecord(value)) {
+      continue;
+    }
+
+    const apiKeyValue = getWriteOnlyString(value.api_key_value);
+    const baseUrlValue = getWriteOnlyString(value.base_url_value);
+
+    if (baseUrlValue && !isValidBaseUrl(baseUrlValue)) {
+      throw new Error(`${key}.base_url_value must be an http or https URL.`);
+    }
+
+    if (apiKeyValue) {
+      await upsertModelSecret({
+        configKey: key,
+        field: "api_key",
+        value: apiKeyValue,
+      });
+    }
+
+    if (baseUrlValue) {
+      await upsertModelSecret({
+        configKey: key,
+        field: "base_url",
+        value: baseUrlValue,
+      });
+    }
+  }
 }
 
 export const Route = createFileRoute("/api/admin/config")({
@@ -297,7 +365,7 @@ export const Route = createFileRoute("/api/admin/config")({
 
         const config = await getAppConfig();
 
-        return json(stripRuntimeFields(config));
+        return json(await stripRuntimeFields(config));
       },
 
       PUT: async ({ request }) => {
@@ -383,10 +451,24 @@ export const Route = createFileRoute("/api/admin/config")({
           return json({ error: error.message }, { status: 500 });
         }
 
+        try {
+          await saveWriteOnlySecrets(body);
+        } catch (error) {
+          return json(
+            {
+              error:
+                error instanceof Error
+                  ? `Secure model secret storage failed: ${error.message}`
+                  : "Secure model secret storage failed.",
+            },
+            { status: 500 }
+          );
+        }
+
         const savedConfig = await getAppConfig();
 
         return json({
-          ...stripRuntimeFields(savedConfig),
+          ...(await stripRuntimeFields(savedConfig)),
           warnings,
         });
       },

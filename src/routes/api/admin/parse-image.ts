@@ -7,6 +7,10 @@ import {
   getImageParseProvider,
   understandImageWithMiniMaxVlm,
 } from "@/lib/imageUnderstanding";
+import {
+  reviewSemanticDuplicates,
+  type SemanticDuplicateReviewResult,
+} from "@/lib/semanticDuplicateReview";
 
 const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"] as const;
 const MAX_IMAGE_SIZE_BYTES = 20 * 1024 * 1024;
@@ -33,6 +37,7 @@ type ParseImageResponse =
       keywords: string[];
       summary: string;
       content: string;
+      duplicate_review: SemanticDuplicateReviewResult;
     }
   | {
       error: string;
@@ -150,7 +155,14 @@ export const Route = createFileRoute("/api/admin/parse-image")({
             }
           }
 
-          return json(parsedImage);
+          const duplicateReview = await reviewSemanticDuplicates({
+            content: parsedImage.content,
+          });
+
+          return json({
+            ...parsedImage,
+            duplicate_review: duplicateReview,
+          });
         } catch (error) {
           console.error(
             "[admin/parse-image] Image parsing failed:",

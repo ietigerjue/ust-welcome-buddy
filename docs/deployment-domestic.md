@@ -1,458 +1,514 @@
 # Mainland China Deployment Plan
 
-Last updated: 2026-06-01
+Last updated: 2026-06-03
 
-This document is a deployment pre-plan for making UST Buddy usable by students in Mainland China. It does not change business logic. It explains the current risks, recommended architecture, rollout steps, and test checkpoints.
+Chinese version: `docs/deployment-domestic.zh-CN.md`.
 
-## Current Problem
+This document is a deployment pre-plan for making UST Buddy usable by students in Mainland China. It is documentation only: it does not change business logic, API behavior, Admin UI, Supabase schema, or provider keys.
 
-UST Buddy currently runs as a TanStack Start SSR app on Vercel with Supabase, MiniMax, and Jina-related model calls. Mainland users may need a VPN because several layers can be slow or unavailable:
+## Executive Summary
 
-- Vercel frontend and SSR/API routes may be blocked or unstable from Mainland networks.
-- Supabase hosted API and Postgres endpoints are international and may have high latency from Mainland China.
-- Jina embedding API and some model endpoints may need proxy routing from Mainland networks.
-- Admin image, URL, and metadata parsing all depend on server-side outbound access to external providers.
+UST Buddy currently runs on Vercel + Supabase and depends on several external model services. Mainland China users may need a VPN because the user-facing app, SSR API routes, Supabase API, embedding API, and model APIs can each become a network bottleneck.
 
-## Recommended Direction
+Recommended rollout:
 
-Use a staged domestic deployment rather than a one-shot migration.
+1. Keep Vercel + Supabase as the international production baseline.
+2. Deploy the TanStack Start SSR runtime to a Mainland-friendly serverless or container runtime.
+3. Put a domestic CDN/custom domain in front of the runtime.
+4. Keep Supabase international for the first smoke test.
+5. If Supabase latency is unacceptable, move to self-hosted Supabase or a compatible domestic Postgres data plane.
+6. Use `app_config` / `modelRouter` to switch model providers or env-var names without changing business code.
 
-### Stage 0 - Keep Current International Deployment
+Do not rewrite the app into a plain static SPA. UST Buddy needs SSR/API routes because `/api/chat`, `/api/admin/*`, Supabase service role keys, MiniMax/Jina keys, and Admin Token validation must remain server-side.
 
-Keep Vercel + Supabase as the canonical production environment.
+## Current Architecture And Access Risks
 
-Use this while preparing:
+| Layer | Current state | Mainland risk | Impact |
+| --- | --- | --- | --- |
+| Frontend and SSR | Vercel TanStack Start SSR | Vercel domain or edge may be slow/unreachable | Users cannot load `/chat` or API routes |
+| API routes | `/api/chat`, `/api/admin/*` on Vercel SSR | Same as Vercel plus provider egress | Chat/Admin fail or timeout |
+| Database | Supabase hosted API + Postgres + pgvector RPC | International API latency or connectivity instability | Retrieval, admin list/import, logs degrade |
+| Chat LLM | Configured text provider, currently MiniMax | Provider endpoint reachability varies by region | Answer generation fails |
+| Metadata LLM | Same provider layer as text metadata | Provider endpoint reachability varies | Admin parse/import metadata degrades |
+| Image Parser | MiniMax API-vlm or OCR fallback | VLM endpoint or image URL fetch may fail | Image/long screenshot import degrades |
+| Embedding | Jina-compatible provider | Jina API may be slow or blocked from Mainland runtime | New chunks may not get embeddings; vector search quality drops |
+| Admin security | Shared Admin Token | Token leakage risk if logs/UI expose it | Knowledge base write risk |
 
-- ICP filing and domain setup.
-- Domestic cloud account and security configuration.
-- Database backup/export flow.
-- Provider fallback choices.
+## Recommended Architecture
 
-This stage is low risk but does not solve Mainland access.
+### Phase 1 Target
 
-### Stage 1 - Domestic App Runtime, Existing Supabase
+Use a domestic runtime for the app while keeping the data plane unchanged:
 
-Deploy the TanStack Start SSR runtime inside Mainland China, while temporarily keeping Supabase international.
-
-Recommended stack:
-
-- App runtime: Alibaba Cloud Function Compute Web Function or Tencent Cloud SCF.
-- CDN and domain: Alibaba Cloud CDN or Tencent Cloud CDN.
-- Static assets: served by the SSR runtime first; optionally move `.output/public` assets to OSS/COS later.
-- Database: keep current Supabase first.
-- Model providers: keep existing env-driven providers, but test from the domestic runtime.
-
-Pros:
-
-- Minimal app changes.
-- Users hit a domestic app endpoint.
-- Admin Token and server-side API keys remain server-only.
-
-Cons:
-
-- `/api/chat` still depends on backend-to-Supabase international connectivity.
-- Supabase latency can still affect chat response time.
-- Model provider egress must be tested from the domestic region.
-
-This is the best first production experiment.
-
-### Stage 2 - Domestic Data Plane
-
-Move or mirror the knowledge base and logs into a domestic data plane.
-
-Preferred choices:
-
-- Self-host Supabase on a domestic ECS/CVM with Docker Compose if compatibility with `@supabase/supabase-js`, PostgREST, and RPC is important.
-- Use domestic managed PostgreSQL with pgvector support if direct Postgres access is acceptable. This likely requires app code changes because the current app uses Supabase HTTP APIs and service role keys.
-- Keep Vercel/Supabase as the international primary and run domestic as a mirror until cutover is proven.
-
-Pros:
-
-- `/api/chat` no longer depends on international Supabase APIs.
-- pgvector Hybrid Search can run closer to Mainland users.
-- More control over backups, networking, and observability.
-
-Cons:
-
-- Self-hosted Supabase has operational cost and does not include every managed Supabase feature.
-- Managed PostgreSQL may require replacing Supabase client calls with direct SQL or a custom internal API layer.
-- Embedding dimensions and RPC definitions must match the existing production schema exactly.
-
-### Stage 3 - Domestic Model Provider Routing
-
-Use `app_config` and `modelRouter` to select provider/model/env-var names without changing business code.
-
-Options:
-
-- Use MiniMax endpoints that are reachable from the domestic runtime.
-- Keep Jina for embeddings only if domestic runtime can reach it reliably.
-- Add a domestic embedding provider later if Jina is slow or blocked.
-- Run embedding backfill offline from a network that can reach the provider, then deploy generated vectors to the domestic database.
-
-Never put provider API keys in `app_config`. Store only env var names.
-
-## Architecture Options
-
-## Option A - Alibaba Cloud First
-
-Recommended first domestic production plan.
-
-Components:
-
-- Domain and ICP: Alibaba Cloud ICP filing for a Mainland-hosted domain.
-- Runtime: Alibaba Cloud Function Compute Web Function or custom runtime.
-- CDN: Alibaba Cloud CDN in front of the app domain.
-- Static assets: cache SSR static assets through CDN; optionally move `.output/public` to OSS.
-- Database phase 1: existing Supabase.
-- Database phase 2: self-hosted Supabase on ECS or Alibaba Cloud RDS PostgreSQL with pgvector-compatible migration work.
-
-Why this fits UST Buddy:
-
-- TanStack Start already builds a Node/Nitro SSR output under `.output`.
-- Function Compute supports HTTP entry through web functions and custom domains.
-- OSS supports static website hosting and CDN acceleration for frontend assets.
-- Alibaba Cloud RDS PostgreSQL has documented AI/vector-related support, but exact pgvector version and RPC compatibility must be verified before migration.
-
-Risks:
-
-- ICP filing is manual and can take time.
-- Nitro server packaging for Function Compute must be tested.
-- If using managed PostgreSQL instead of Supabase, code changes are likely required.
-
-## Option B - Tencent Cloud First
-
-Similar to Option A, using Tencent Cloud services.
-
-Components:
-
-- Domain and ICP: Tencent Cloud ICP flow.
-- Runtime: Tencent Cloud SCF or container service.
-- CDN: Tencent Cloud CDN.
-- Static assets: COS + CDN.
-- Database: TencentDB for PostgreSQL or self-hosted Supabase on CVM.
-
-Pros:
-
-- Good Mainland network reach.
-- COS/CDN/SCF are common for domestic web deployments.
-
-Cons:
-
-- Need to verify Node SSR server compatibility and cold start behavior.
-- Need to verify pgvector support/version for the chosen PostgreSQL engine.
-- Supabase compatibility may still require self-hosting rather than managed Postgres only.
-
-## Option C - Hong Kong/Singapore Runtime With Mainland-Friendly CDN
-
-Use Hong Kong or Singapore runtime plus CDN acceleration where available.
-
-Pros:
-
-- Avoids some ICP complexity if not serving from Mainland infrastructure.
-- Easier operational model than a full domestic migration.
-
-Cons:
-
-- Does not guarantee access without VPN.
-- Mainland CDN acceleration for a domain usually still involves compliance requirements.
-- Supabase and model-provider latency remain a risk.
-
-This is a fallback for a portfolio demo, not the strongest Mainland-user solution.
-
-## Option D - Cloudflare China Network
-
-Cloudflare China Network can improve Mainland delivery, but it is an Enterprise feature operated with JD Cloud.
-
-Pros:
-
-- Strong global + China edge story.
-- Useful if the project becomes institutional or enterprise-backed.
-
-Cons:
-
-- Enterprise contract required.
-- ICP and China-specific setup are still required.
-- Overkill for a small portfolio project.
-
-## Recommended Implementation Plan
-
-## Phase 1 - Preparation
-
-Manual:
-
-- Choose a domain or subdomain, for example `ustbuddy.example.cn`.
-- Complete real-name verification for the chosen domestic cloud account.
-- Start ICP filing if hosting the site or CDN inside Mainland China.
-- Decide whether the first test will use Alibaba Cloud or Tencent Cloud.
-- Confirm whether the project can legally and operationally serve the intended audience from Mainland infrastructure.
-
-Automatable:
-
-- Run `npm run build` and archive `.output`.
-- Export a list of required environment variables.
-- Back up Supabase schema and data.
-- Record current `app_config` rows.
-
-Environment variables to inventory:
-
-```env
-ADMIN_IMPORT_TOKEN=
-SUPABASE_URL=
-SUPABASE_SERVICE_ROLE_KEY=
-MINIMAX_API_KEY=
-MINIMAX_BASE_URL=
-MINIMAX_MODEL=
-IMAGE_PARSE_PROVIDER=
-MINIMAX_VLM_API_KEY=
-MINIMAX_VLM_BASE_URL=
-MINIMAX_VLM_ENDPOINT=
-EMBEDDING_PROVIDER=
-EMBEDDING_API_KEY=
-EMBEDDING_BASE_URL=
-EMBEDDING_MODEL=
-EMBEDDING_DIMENSIONS=
-HTTPS_PROXY=
-HTTP_PROXY=
+```text
+Mainland user
+  -> Domestic CDN / custom HTTPS domain
+  -> Domestic SSR runtime (Alibaba FC / Tencent SCF / Huawei FunctionGraph / container)
+  -> Current Supabase
+  -> MiniMax / Jina / other configured providers
 ```
 
-Do not print or commit real values.
+Why this is the best first step:
 
-## Phase 2 - Deploy SSR Runtime
+- It tests whether the biggest pain is app delivery or data/provider egress.
+- It keeps code changes minimal.
+- It keeps current Supabase as the rollback-safe source of truth.
+- It preserves server-side secret handling.
+
+### Phase 2 Target
+
+If Supabase is still too slow:
+
+```text
+Mainland user
+  -> Domestic CDN / custom HTTPS domain
+  -> Domestic SSR runtime
+  -> Domestic Supabase self-host or compatible Postgres + pgvector
+  -> Domestic-reachable model providers
+```
+
+This is a larger migration because the current code uses Supabase HTTP APIs, service role keys, and RPC calls.
+
+## Option Matrix
+
+| Option | Runtime | Static assets | Database | Best for | Pros | Cons |
+| --- | --- | --- | --- | --- | --- | --- |
+| A. Alibaba Cloud first | Function Compute Web Function or container | Alibaba OSS + CDN | Start with Supabase, later self-host Supabase/ECS or RDS Postgres | First serious Mainland rollout | Mature CDN/OSS/FC stack, clear ICP path, web functions can forward HTTP to a custom server | ICP/manual setup, Nitro packaging must be tested, data plane still international at first |
+| B. Tencent Cloud first | SCF Web Function or container | COS + CDN | Start with Supabase, later CVM/self-host or TencentDB Postgres | Alternative Mainland rollout | SCF supports web-function style deployments and framework examples, good domestic network | Cold starts and Node SSR compatibility need testing, Supabase compatibility may require self-hosting |
+| C. Huawei Cloud first | FunctionGraph or container | OBS + CDN | Start with Supabase, later RDS/Postgres plan | Enterprise/Huawei ecosystem | Viable serverless path, strong domestic enterprise footprint | More verification needed for TanStack/Nitro packaging and pgvector strategy |
+| D. HK/Singapore runtime + CDN | Vercel/HK/SG runtime plus CDN | CDN cache | Current Supabase | Portfolio demo fallback | Easiest operational path, may avoid Mainland hosting compliance | Does not guarantee VPN-free Mainland access |
+| E. Cloudflare China Network | Existing runtime behind Cloudflare China | Cloudflare/JD Cloud China network | Current or migrated | Enterprise-backed deployment | Strong global + China edge option | Enterprise/commercial setup, ICP and China onboarding still required |
+
+## Recommended First Implementation: Alibaba Or Tencent
+
+Choose Alibaba Cloud if the team already uses Alibaba Cloud or wants the OSS + CDN + Function Compute path. Choose Tencent Cloud if the team already uses Tencent Cloud or prefers SCF/COS.
+
+For UST Buddy, the runtime must support:
+
+- Node.js execution.
+- Running the Nitro server entry, usually `node .output/server/index.mjs`.
+- Multipart uploads for Admin Import.
+- Server-side outbound HTTPS to Supabase and model providers.
+- Environment variables stored server-side only.
+- Enough timeout and memory for image parsing and URL import.
+
+## Deployment Steps
+
+## 1. Pre-Deployment Preparation
 
 Manual:
 
-- Create a Function Compute / SCF service.
-- Use a Node.js runtime or custom runtime that can run the Nitro server.
-- Configure memory, timeout, and concurrency. Start with higher memory for image/OCR/admin flows.
-- Configure a custom domain and HTTPS certificate.
-- Set environment variables in the cloud console.
+- Choose the first domestic cloud: Alibaba Cloud, Tencent Cloud, or Huawei Cloud.
+- Choose a domain or subdomain, for example `cn.ustbuddy.example.com` or `ustbuddy.example.cn`.
+- Complete account real-name verification.
+- Start ICP filing if the site is hosted through Mainland infrastructure or Mainland CDN.
+- Decide whether Admin routes should be IP-restricted.
+- Decide whether the first public test is a separate subdomain instead of replacing the existing Vercel domain.
 
 Automatable:
 
-- Build with `npm run build`.
+- Run `npm run build`.
 - Package `.output`.
-- Start command should point to the Nitro server entry, typically:
+- Export a redacted environment variable inventory.
+- Back up current Supabase schema and data.
+- Export current `app_config` rows.
+- Run `npm run check:secrets` before deploying artifacts.
+
+Required local checks before packaging:
+
+```bash
+npm run check:secrets
+npm run build
+npm run test:model-router
+npm run test:retrieval
+```
+
+## 2. Environment Variables
+
+Configure real values only in the runtime provider's environment variable console. Never put real keys in `app_config`, Git, frontend code, or CDN config.
+
+Required or commonly needed:
+
+```text
+ADMIN_IMPORT_TOKEN
+SUPABASE_URL
+SUPABASE_SERVICE_ROLE_KEY
+
+MINIMAX_API_KEY
+MINIMAX_BASE_URL
+MINIMAX_MODEL
+
+IMAGE_PARSE_PROVIDER
+IMAGE_PARSE_MODEL
+MINIMAX_VLM_API_KEY
+MINIMAX_VLM_BASE_URL
+MINIMAX_VLM_ENDPOINT
+
+EMBEDDING_PROVIDER
+EMBEDDING_API_KEY
+EMBEDDING_BASE_URL
+EMBEDDING_MODEL
+EMBEDDING_DIMENSIONS
+
+SEMANTIC_DUPLICATE_THRESHOLD
+RAG_DEBUG
+HTTPS_PROXY
+HTTP_PROXY
+```
+
+Recommended values for deployment smoke test:
+
+- `RAG_DEBUG=false`.
+- Do not configure proxy variables unless the runtime actually needs them.
+- Keep `app_config` storing only provider/model/env-var names.
+- Keep Admin Token long, random, and separate from any public README/demo text.
+
+## 3. Build And Package
+
+Automatable:
+
+```bash
+npm install
+npm run build
+```
+
+Expected output:
+
+```text
+.output/public
+.output/server
+```
+
+The runtime start command usually points at:
 
 ```bash
 node .output/server/index.mjs
 ```
 
-Verify this command in the target runtime because Function Compute/SCF startup conventions may differ.
+Verify this command in the chosen serverless/container runtime because each provider has its own startup convention.
 
-Routing:
+## 4. Deploy SSR Runtime
 
-- `/api/*`: no CDN cache, always forward to SSR runtime.
-- `/admin/*`: no CDN cache, always forward to SSR runtime.
-- `/chat`, `/about`, `/`: SSR runtime, short or no HTML cache.
-- `/assets/*` or equivalent static asset paths: long CDN cache after confirming emitted asset paths.
-
-## Phase 3 - Static Asset Acceleration
-
-Option 1, simpler:
-
-- Serve static assets through the SSR runtime and cache them in CDN.
-
-Option 2, more optimized:
-
-- Upload `.output/public` to OSS/COS.
-- Put CDN in front of OSS/COS.
-- Use path-based CDN origin rules so static asset paths go to OSS/COS and SSR/API paths go to Function Compute/SCF.
+### Alibaba Cloud Function Compute
 
 Manual:
 
-- Configure OSS/COS bucket.
-- Configure custom CDN domain and HTTPS certificate.
-- Configure cache rules and invalidation.
+- Create a Function Compute service and web function/custom runtime.
+- Upload the packaged `.output` plus required `node_modules`/runtime files, or use a container image if packaging is easier.
+- Configure an HTTP trigger or custom domain.
+- Configure memory and timeout. Start with a higher timeout for admin image/URL parsing.
+- Add environment variables in the Function Compute console.
 
-Automatable:
+Automatable later:
 
-- Upload `.output/public` after build.
-- Invalidate CDN cache after deploy.
+- Build package.
+- Upload package.
+- Update function version/alias.
+- Smoke test custom domain.
 
-## Phase 4 - Database Strategy
+Notes:
 
-### Short-Term
+- Alibaba Function Compute web functions can forward HTTP requests to a custom runtime HTTP server, which matches the SSR server shape.
+- Alibaba OSS can host static assets and Alibaba CDN can cache them, but UST Buddy itself should remain SSR/API-capable.
 
-Keep current Supabase and test domestic runtime to Supabase latency.
+### Tencent Cloud SCF
+
+Manual:
+
+- Create an SCF web function or use a container/function URL style deployment.
+- Configure Node runtime/custom runtime or container image.
+- Configure function URL/API Gateway/custom domain.
+- Add environment variables in the SCF console.
+- Set memory/timeout with Admin Import in mind.
+
+Automatable later:
+
+- Build package.
+- Deploy function/container.
+- Update alias/version.
+- Smoke test domain.
+
+Notes:
+
+- Tencent SCF documents include web-function management, custom domain, environment variables, Node.js and framework deployment paths.
+- Test multipart upload limits with Markdown/DOCX/Image import before using it for admin operations.
+
+### Huawei Cloud FunctionGraph
+
+Manual:
+
+- Create a FunctionGraph function or containerized runtime.
+- Configure HTTP trigger/API Gateway.
+- Bind custom domain and HTTPS.
+- Add environment variables and outbound network permissions.
+
+Use this if the team already has Huawei Cloud accounts or institutional constraints point that way.
+
+## 5. Static Asset And CDN Strategy
+
+Option 1, simpler first release:
+
+- Serve `.output/public` through the SSR runtime.
+- Put CDN in front.
+- Cache static asset paths only.
+
+Option 2, optimized:
+
+- Upload `.output/public` to OSS/COS/OBS/Qiniu Kodo.
+- Put domestic CDN in front of object storage.
+- Route static asset paths to object storage and dynamic paths to SSR runtime.
+
+CDN cache rules:
+
+- Cache hashed static assets aggressively.
+- Do not cache `/api/*`.
+- Do not cache `/admin/*`.
+- Do not cache SSR HTML unless you have a controlled invalidation strategy.
+- Enable HTTPS and HTTP-to-HTTPS redirect.
+
+Important:
+
+- Do not store secrets or server output in object storage.
+- Object storage should contain public static assets only.
+- If using Alibaba OSS static website hosting, remember it is static-only; server-side dynamic routes must still go to Function Compute or another backend.
+
+## 6. DNS, ICP, And HTTPS
+
+Manual:
+
+- Complete ICP filing for Mainland-hosted domains/CDN where required.
+- Configure DNS:
+  - `cn.ustbuddy.example.com` -> CDN or runtime custom domain.
+  - Optional `static.ustbuddy.example.com` -> CDN over OSS/COS/OBS/Kodo.
+- Issue and bind HTTPS certificates.
+- Enable HTTPS redirect.
+- Configure CDN origin routing:
+  - Static paths -> object storage or runtime static asset origin.
+  - `/api/*`, `/admin/*`, `/chat`, `/` -> SSR runtime.
+
+Security:
+
+- Use WAF/CDN rules for `/api/admin/*`.
+- Consider IP allowlisting for `/admin/*` if admins have stable IPs.
+- Rate-limit `/api/chat` and parse endpoints.
+- Do not expose environment variables in client-side bundles or HTML.
+
+## 7. Database Strategy
+
+### Short-Term: Keep Current Supabase
+
+Use this to test whether app delivery alone solves most of the user access problem.
 
 Checks:
 
 - `/api/chat` covered question.
 - `/api/chat` not-covered question.
 - `/admin/documents` list.
-- `/admin/import` import a small test document.
+- `/admin/import` small Markdown import.
 - `question_logs` best-effort insert.
 
-### Medium-Term
+Risk:
 
-Self-host Supabase on domestic ECS/CVM if Supabase API compatibility is needed.
+- Supabase hosted API may still be slow or unreachable from the domestic runtime.
+
+### Medium-Term: Self-Hosted Supabase In Mainland China
+
+Use this when Supabase HTTP API compatibility matters.
 
 Manual:
 
-- Provision ECS/CVM and private network.
-- Deploy Supabase Docker Compose.
-- Configure HTTPS and internal firewall rules.
+- Provision ECS/CVM/VM in the domestic cloud.
+- Deploy Supabase self-hosting stack.
+- Configure Postgres, PostgREST, auth/storage components as needed.
+- Enable pgvector.
 - Apply project SQL:
-  - documents / document_chunks schema
   - `supabase/app-config.sql`
   - `supabase/question-logs-observability.sql`
-  - pgvector extension and `match_document_chunks` RPC
-- Migrate data from current Supabase.
+  - `supabase/deduplication.sql`
+  - `supabase/semantic-duplicate-review.sql`
+  - pgvector `match_document_chunks` RPC
+  - duplicate review RPC if used
+- Restore `documents`, `document_chunks`, `question_logs`, and `app_config`.
 
 Automatable:
 
-- Database dump/restore scripts.
+- Dump/restore scripts.
 - SQL migration scripts.
-- Embedding backfill with `npm run embed:chunks`.
+- `npm run embed:chunks` for missing embeddings.
 
-Important:
+Risk:
 
-- Keep `document_chunks.embedding` dimensions aligned with `EMBEDDING_DIMENSIONS`.
-- Re-run `npm run test:vector-search` and `npm run test:retrieval`.
+- Self-hosted Supabase needs operations: backups, upgrades, logs, TLS, firewall, and monitoring.
 
-### Long-Term
+### Long-Term: Domestic Managed PostgreSQL
 
-Move to domestic managed PostgreSQL only if the app is updated to use direct SQL or an internal data API.
+Use this only if the team is willing to refactor data access.
 
-This is not a no-code deployment change because current server code expects Supabase HTTP APIs.
+Reason:
 
-## Phase 5 - Model Provider Strategy
+- Current code uses `@supabase/supabase-js`, Supabase HTTP APIs, service role keys, and RPC semantics.
+- A plain Postgres move may need direct SQL clients or an internal data API layer.
 
-Use the existing `app_config` and `modelRouter` shape:
+## 8. Model API Strategy
 
-- `chat_llm`: answer generation.
-- `metadata_llm`: Markdown/WeChat/Image/Web URL metadata.
+Use existing `app_config` and `modelRouter`:
+
+- `chat_llm`: user answer generation.
+- `metadata_llm`: import metadata extraction.
 - `image_parser`: MiniMax API-vlm or OCR fallback.
-- `embedding`: Jina or future domestic embedding provider.
+- `embedding`: Jina-compatible provider or future domestic embedding provider.
+
+Recommended first setup:
+
+- Keep MiniMax for text and image parser if reachable from the domestic runtime.
+- Keep Jina for embeddings only if reachable and stable.
+- Use `HTTPS_PROXY` / `HTTP_PROXY` server-side only if needed.
+- If Jina is unstable, generate embeddings from a reachable network and sync vectors to the domestic database.
+- If DeepSeek or another domestic provider is adopted for chat or metadata later, add it through provider/router/config instead of hardcoding it in routes.
 
 Manual:
 
-- Configure real API keys only in cloud environment variables.
-- Use `/admin/settings` to save provider/model/env-var names only.
-- Test whether the domestic runtime can reach each provider.
+- Configure real provider keys as runtime env vars.
+- Use `/admin/settings` to store provider/model/env-var names only.
+- Test each provider from the deployed runtime.
 
 Automatable:
 
-- `npm run test:model-config`
-- `npm run test:model-router`
-- `npm run test:embedding`
-- `npm run test:vector-search`
-- `npm run test:retrieval`
+```bash
+npm run test:model-config
+npm run test:model-router
+npm run test:embedding
+npm run test:vector-search
+npm run test:retrieval
+```
 
-Fallback choices:
+## 9. Firewall And Network Security
 
-- If Jina is blocked or slow, generate embeddings offline from a reachable network and import them.
-- If MiniMax VLM is slow, keep text imports operational and mark image import as admin-only best effort.
-- If a provider requires proxy routing, configure `HTTPS_PROXY` / `HTTP_PROXY` server-side only.
+Inbound:
 
-## DNS, ICP, And HTTPS
+- Public HTTPS only through CDN/custom domain.
+- No direct public database ports.
+- Admin routes protected by `ADMIN_IMPORT_TOKEN` and optionally IP rules.
 
-Manual:
+Outbound:
 
-- Complete ICP filing before serving a Mainland-hosted domain.
-- Configure DNS records:
-  - `ustbuddy.example.cn` to CDN or Function Compute custom domain.
-  - Optional `static.ustbuddy.example.cn` to CDN over OSS/COS.
-- Issue and bind HTTPS certificates.
-- Enable HTTP-to-HTTPS redirect.
-
-Security:
-
-- Keep admin pages private by obscurity plus Admin Token, but do not rely on obscurity alone.
-- Add WAF or CDN rules for `/admin/*` and `/api/admin/*` if available.
-- Consider IP allowlisting for admin routes if the admin team has stable IPs.
-- Rate-limit `/api/chat` and admin parse endpoints.
-- Do not expose `SUPABASE_SERVICE_ROLE_KEY`, model API keys, or `ADMIN_IMPORT_TOKEN` to the browser.
-
-## Firewall And Network Rules
-
-Recommended:
-
-- Allow public inbound HTTPS only through CDN/ALB/custom domain.
-- Keep database ports private.
-- Allow runtime outbound traffic only to:
-  - Supabase or domestic Supabase/Postgres API endpoint.
-  - MiniMax API endpoint.
+- Allow runtime to reach:
+  - Supabase or domestic data endpoint.
+  - MiniMax / model provider endpoints.
   - Embedding provider endpoint.
-  - Required image/OCR URL import destinations.
-- Log outbound failures for provider debugging.
+  - Admin-provided URLs for URL import, with existing SSRF protections.
+- Log provider/network failures without printing API keys.
 
-## Test Checkpoints
+Secrets:
 
-Run tests from at least three network locations:
+- Store `SUPABASE_SERVICE_ROLE_KEY`, provider API keys, proxy credentials, and Admin Token only in server runtime env vars.
+- Never store real keys in Supabase `app_config`.
+- Never expose real keys in Admin Settings.
+
+## 10. Testing Plan
+
+Test from at least:
 
 - Mainland China mobile network.
-- Mainland China campus or home broadband.
+- Mainland China broadband or campus network.
 - Hong Kong or international network.
 
 Functional checks:
 
-- Public pages load without VPN.
-- `/chat` loads and mobile layout is intact.
-- Covered question returns a grounded answer with deduped sources.
-- Uncovered question returns `当前知识库没有覆盖这个问题。`
+- `/` loads without VPN.
+- `/chat` loads without VPN.
+- A covered question returns a grounded answer with deduped sources.
+- An uncovered question returns `当前知识库没有覆盖这个问题。`
+- `/api/chat` does not expose provider keys in browser network responses.
 - `/admin/import` requires Admin Token.
-- Admin Markdown import parses and imports a small document.
-- Admin Web URL Import rejects localhost/private URLs.
-- Admin documents list loads and chunk counts are visible.
+- Markdown import parses and imports a small document.
+- DOCX import parses and fills the form.
+- Web URL import rejects localhost/private/internal URLs.
+- Image import either succeeds or returns a clear provider/OCR error.
+- `/admin/documents` lists documents and chunk counts.
 - `/admin/settings` loads config and does not show real API keys.
-- `question_logs` still writes on a best-effort basis.
+- `question_logs` writes best-effort rows.
+
+Retrieval checks:
+
+- `npm run test:retrieval` pass rate remains stable.
+- `npm run test:hybrid-stability` returns stable top chunk ordering.
+- `npm run test:vector-search` returns expected metadata fields.
+- `document_chunks.embedding` non-null count matches expected coverage.
 
 Performance checks:
 
-- First page load under acceptable threshold from Mainland.
-- `/api/chat` p95 latency under the chosen product target.
-- Retrieval-only latency measured separately from LLM latency.
-- Admin image parsing timeout is acceptable or clearly fails.
-
-Data checks:
-
-- `documents` count matches expected migration count.
-- `document_chunks` count matches expected migration count.
-- `document_chunks.embedding` non-null count matches expected vector coverage.
-- `match_document_chunks` RPC returns expected fields.
-- `npm run test:retrieval` pass rate is stable after migration.
+- First page load time from Mainland.
+- `/api/chat` latency separated into retrieval time and LLM time where possible.
+- p95 chat latency target chosen by the product owner.
+- Admin import timeout behavior for image/DOCX/Web URL.
 
 Security checks:
 
-- No API key appears in browser network responses.
 - `/api/admin/*` returns 401 without `x-admin-token`.
-- CDN does not cache `/api/*` or `/admin/*` responses.
-- Service role key exists only in server environment variables.
+- CDN does not cache `/api/*` or `/admin/*`.
+- No API key appears in HTML, JavaScript bundles, or network responses.
+- Service role key exists only in server runtime environment.
 
-## Rollback Plan
+## 11. Rollback Plan
 
 - Keep Vercel deployment unchanged until domestic deployment passes all checks.
-- Keep current Supabase as the source of truth until domestic data plane is verified.
-- Use DNS weighted routing or a separate subdomain first, for example `cn.ustbuddy.example.com`.
-- Roll back by changing DNS back to the Vercel domain or disabling the domestic CDN route.
-- Keep database exports before every migration.
+- Use a separate domestic test subdomain first.
+- Keep current Supabase as the source of truth until the domestic data plane is verified.
+- Back up Supabase before any migration.
+- Roll back by changing DNS back to the Vercel deployment or disabling the domestic CDN route.
+- Keep previous runtime version/alias available in the cloud console.
 
-## Decision Summary
+## Manual vs Automatable Work
+
+Manual:
+
+- Cloud account real-name verification.
+- ICP filing.
+- Domain purchase/ownership verification.
+- DNS and certificate approval.
+- Runtime selection and first console setup.
+- Secret entry into cloud environment variable console.
+- Database migration approval.
+- Production cutover.
+
+Automatable:
+
+- `npm install`.
+- `npm run build`.
+- Artifact packaging.
+- Static asset upload.
+- Function/container deployment.
+- SQL migration execution after review.
+- Retrieval/model test scripts.
+- CDN cache invalidation.
+
+## Decision
 
 Recommended first move:
 
-1. Deploy the existing `.output` SSR app to Alibaba Cloud Function Compute or Tencent Cloud SCF.
-2. Put a domestic CDN/custom domain in front.
-3. Keep Supabase international for the first smoke test.
+1. Deploy `.output` SSR app to Alibaba Cloud Function Compute or Tencent Cloud SCF.
+2. Put domestic CDN/custom HTTPS domain in front.
+3. Keep current Supabase for the first smoke test.
 4. If Supabase latency is unacceptable, migrate to self-hosted Supabase in Mainland China.
-5. Use `/admin/settings` and environment variables to switch providers without exposing secrets.
+5. Use `app_config` and environment variables to switch providers without exposing secrets.
 
 Avoid for now:
 
-- Rewriting the app into a static-only SPA.
-- Replacing Supabase with plain Postgres without a planned data-access refactor.
-- Exposing service role keys or model keys to the frontend.
-- Adding public user upload or public web search.
-- Using crawler/proxy tricks to bypass provider or platform access restrictions.
+- Rewriting TanStack Start SSR into a static-only SPA.
+- Replacing Supabase with plain Postgres without a data-access refactor.
+- Exposing service role keys, Admin Token, or model keys to the frontend.
+- Adding public user upload.
+- Adding public real-time web search.
+- Crawling or bypassing provider/platform access restrictions.
 
 ## References
 
-- Alibaba Cloud OSS static website hosting: https://www.alibabacloud.com/help/en/oss/user-guide/overview-71/
+- Alibaba Cloud OSS static website hosting: https://www.alibabacloud.com/help/en/oss/user-guide/hosting-static-websites
 - Alibaba Cloud Function Compute web functions: https://www.alibabacloud.com/help/en/functioncompute/fc/user-guide/web-functions
-- Alibaba Cloud Function Compute custom domains: https://www.alibabacloud.com/help/en/fc/configure-a-custom-domain-name
-- Alibaba Cloud ICP filing scenarios: https://www.alibabacloud.com/help/en/icp-filing/faq-about-icp-filing-applications-in-different-scenarios
+- Tencent Cloud Serverless Cloud Function: https://www.tencentcloud.com/document/product/583
+- Huawei Cloud FunctionGraph documentation: https://support.huaweicloud.com/intl/en-us/functiongraph/index.html
 - Supabase self-hosting: https://supabase.com/docs/guides/self-hosting
-- Supabase vector columns and pgvector: https://supabase.com/docs/guides/ai/vector-columns
-- pgvector project: https://github.com/pgvector/pgvector
-- Cloudflare China Network overview: https://developers.cloudflare.com/china-network/
+- Supabase pgvector/vector columns: https://supabase.com/docs/guides/ai/vector-columns
+- Cloudflare China Network: https://developers.cloudflare.com/china-network/
+- DeepSeek API docs: https://api-docs.deepseek.com/

@@ -140,6 +140,14 @@ Start the development server:
 npm run dev
 ```
 
+Open the admin import page directly:
+
+直接启动并打开后台导入页：
+
+```bash
+npm run admin
+```
+
 Useful checks:
 
 常用检查命令：

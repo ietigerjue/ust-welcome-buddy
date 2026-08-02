@@ -8,7 +8,9 @@ type MatchDocumentChunkRow = {
   id?: unknown;
   document_id?: unknown;
   content?: unknown;
+  content_hash?: unknown;
   similarity?: unknown;
+  chunk_index?: unknown;
 };
 
 type DocumentMetadataRow = {
@@ -22,10 +24,17 @@ type DocumentMetadataRow = {
   updated_at: string | null;
 };
 
+type ChunkMetadataRow = {
+  id: string;
+  chunk_index: number | null;
+  content_hash: string | null;
+};
+
 export type VectorKnowledgeChunk = {
   chunk_id: string;
   document_id: string;
   content: string;
+  content_hash: string;
   similarity: number;
   score: number;
   title: string;
@@ -35,6 +44,8 @@ export type VectorKnowledgeChunk = {
   source_url: string;
   source_type: string;
   updated_at: string;
+  chunk_index: number;
+  chunkIndex: number;
   retrieval_type: "vector";
 };
 
@@ -68,7 +79,10 @@ function normalizeMatchRow(row: MatchDocumentChunkRow) {
     chunk_id: chunkId,
     document_id: documentId,
     content,
+    content_hash: getString(row.content_hash),
     similarity: getNumber(row.similarity),
+    chunk_index:
+      row.chunk_index === undefined ? undefined : getNumber(row.chunk_index),
   };
 }
 
@@ -87,6 +101,46 @@ function buildDocumentMap(documents: DocumentMetadataRow[]) {
       },
     ])
   );
+}
+
+function buildChunkIndexMap(chunks: ChunkMetadataRow[]) {
+  return new Map(
+    chunks.map((chunk) => [
+      chunk.id,
+      {
+        chunk_index: chunk.chunk_index ?? 0,
+        content_hash: chunk.content_hash ?? "",
+      },
+    ])
+  );
+}
+
+function compareVectorRank(a: VectorKnowledgeChunk, b: VectorKnowledgeChunk) {
+  const similarityDelta = b.similarity - a.similarity;
+
+  if (similarityDelta !== 0) {
+    return similarityDelta;
+  }
+
+  const documentDelta = a.document_id.localeCompare(b.document_id, "en", {
+    numeric: true,
+    sensitivity: "base",
+  });
+
+  if (documentDelta !== 0) {
+    return documentDelta;
+  }
+
+  const chunkIndexDelta = a.chunk_index - b.chunk_index;
+
+  if (chunkIndexDelta !== 0) {
+    return chunkIndexDelta;
+  }
+
+  return a.chunk_id.localeCompare(b.chunk_id, "en", {
+    numeric: true,
+    sensitivity: "base",
+  });
 }
 
 export async function searchVectorKnowledgeBase(
@@ -143,14 +197,28 @@ export async function searchVectorKnowledgeBase(
     return [];
   }
 
+  const chunkIds = Array.from(
+    new Set(normalizedMatches.map((match) => match.chunk_id))
+  );
   const documentIds = Array.from(
     new Set(normalizedMatches.map((match) => match.document_id))
   );
 
-  const { data: documents, error: documentsError } = await supabase
-    .from("documents")
-    .select("id, title, slug, category, source, source_url, source_type, updated_at")
-    .in("id", documentIds);
+  const [
+    { data: documents, error: documentsError },
+    { data: chunks, error: chunksError },
+  ] = await Promise.all([
+    supabase
+      .from("documents")
+      .select(
+        "id, title, slug, category, source, source_url, source_type, updated_at"
+      )
+      .in("id", documentIds),
+    supabase
+      .from("document_chunks")
+      .select("id, chunk_index, content_hash")
+      .in("id", chunkIds),
+  ]);
 
   if (documentsError) {
     console.error("[vector-search] Failed to load document metadata:", {
@@ -162,24 +230,43 @@ export async function searchVectorKnowledgeBase(
     return [];
   }
 
+  if (chunksError) {
+    console.error("[vector-search] Failed to load chunk metadata:", {
+      message: chunksError.message,
+      details: chunksError.details,
+      hint: chunksError.hint,
+      code: chunksError.code,
+    });
+  }
+
   const documentMap = buildDocumentMap(
     (documents ?? []) as DocumentMetadataRow[]
   );
+  const chunkIndexMap = buildChunkIndexMap(
+    (chunks ?? []) as ChunkMetadataRow[]
+  );
 
-  return normalizedMatches.map((match) => {
-    const metadata = documentMap.get(match.document_id);
+  return normalizedMatches
+    .map((match) => {
+      const metadata = documentMap.get(match.document_id);
+      const chunkMetadata = chunkIndexMap.get(match.chunk_id);
+      const chunkIndex = match.chunk_index ?? chunkMetadata?.chunk_index ?? 0;
 
-    return {
-      ...match,
-      score: match.similarity,
-      title: metadata?.title ?? "",
-      slug: metadata?.slug ?? "",
-      category: metadata?.category ?? "",
-      source: metadata?.source ?? "",
-      source_url: metadata?.source_url ?? "",
-      source_type: metadata?.source_type ?? "",
-      updated_at: metadata?.updated_at ?? "",
-      retrieval_type: "vector",
-    };
-  });
+      return {
+        ...match,
+        content_hash: match.content_hash || chunkMetadata?.content_hash || "",
+        score: match.similarity,
+        title: metadata?.title ?? "",
+        slug: metadata?.slug ?? "",
+        category: metadata?.category ?? "",
+        source: metadata?.source ?? "",
+        source_url: metadata?.source_url ?? "",
+        source_type: metadata?.source_type ?? "",
+        updated_at: metadata?.updated_at ?? "",
+        chunk_index: chunkIndex,
+        chunkIndex,
+        retrieval_type: "vector" as const,
+      };
+    })
+    .sort(compareVectorRank);
 }

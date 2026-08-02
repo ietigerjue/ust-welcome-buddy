@@ -115,20 +115,48 @@ function buildConfig(
 }
 
 export function getDefaultAppConfig(): AppConfig {
+  const chatProvider =
+    env("CHAT_LLM_PROVIDER") ||
+    env("LLM_PROVIDER") ||
+    (env("DEEPSEEK_API_KEY") ? "deepseek" : "minimax");
+  const metadataProvider =
+    env("METADATA_LLM_PROVIDER") ||
+    env("LLM_PROVIDER") ||
+    (env("DEEPSEEK_API_KEY") ? "deepseek" : "minimax");
+
   return {
     chat_llm: buildConfig({
-      provider: env("CHAT_LLM_PROVIDER") || env("LLM_PROVIDER") || "minimax",
-      model: env("CHAT_LLM_MODEL") || env("MINIMAX_MODEL"),
-      base_url_env: env("CHAT_LLM_BASE_URL_ENV") || "MINIMAX_BASE_URL",
-      api_key_env: env("CHAT_LLM_API_KEY_ENV") || "MINIMAX_API_KEY",
+      provider: chatProvider,
+      model:
+        env("CHAT_LLM_MODEL") ||
+        (chatProvider === "deepseek" ? env("DEEPSEEK_MODEL") : "") ||
+        env("MINIMAX_MODEL") ||
+        env("DEEPSEEK_MODEL"),
+      base_url_env:
+        env("CHAT_LLM_BASE_URL_ENV") ||
+        (chatProvider === "deepseek" ? "DEEPSEEK_BASE_URL" : "MINIMAX_BASE_URL"),
+      api_key_env:
+        env("CHAT_LLM_API_KEY_ENV") ||
+        (chatProvider === "deepseek" ? "DEEPSEEK_API_KEY" : "MINIMAX_API_KEY"),
       enabled: true,
     }),
     metadata_llm: buildConfig({
-      provider:
-        env("METADATA_LLM_PROVIDER") || env("LLM_PROVIDER") || "minimax",
-      model: env("METADATA_LLM_MODEL") || env("MINIMAX_MODEL"),
-      base_url_env: env("METADATA_LLM_BASE_URL_ENV") || "MINIMAX_BASE_URL",
-      api_key_env: env("METADATA_LLM_API_KEY_ENV") || "MINIMAX_API_KEY",
+      provider: metadataProvider,
+      model:
+        env("METADATA_LLM_MODEL") ||
+        (metadataProvider === "deepseek" ? env("DEEPSEEK_MODEL") : "") ||
+        env("MINIMAX_MODEL") ||
+        env("DEEPSEEK_MODEL"),
+      base_url_env:
+        env("METADATA_LLM_BASE_URL_ENV") ||
+        (metadataProvider === "deepseek"
+          ? "DEEPSEEK_BASE_URL"
+          : "MINIMAX_BASE_URL"),
+      api_key_env:
+        env("METADATA_LLM_API_KEY_ENV") ||
+        (metadataProvider === "deepseek"
+          ? "DEEPSEEK_API_KEY"
+          : "MINIMAX_API_KEY"),
       enabled: true,
     }),
     image_parser: buildConfig({

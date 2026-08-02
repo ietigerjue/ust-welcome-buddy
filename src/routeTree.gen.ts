@@ -20,7 +20,9 @@ import { Route as ApiAdminParseWechatRouteImport } from './routes/api/admin/pars
 import { Route as ApiAdminParseUrlRouteImport } from './routes/api/admin/parse-url'
 import { Route as ApiAdminParseMarkdownRouteImport } from './routes/api/admin/parse-markdown'
 import { Route as ApiAdminParseImageRouteImport } from './routes/api/admin/parse-image'
+import { Route as ApiAdminParseDocxRouteImport } from './routes/api/admin/parse-docx'
 import { Route as ApiAdminImportRouteImport } from './routes/api/admin/import'
+import { Route as ApiAdminEmbedChunksRouteImport } from './routes/api/admin/embed-chunks'
 import { Route as ApiAdminDocumentsRouteImport } from './routes/api/admin/documents'
 import { Route as ApiAdminConfigRouteImport } from './routes/api/admin/config'
 import { Route as ApiAdminDocumentsIdRouteImport } from './routes/api/admin/documents/$id'
@@ -80,9 +82,19 @@ const ApiAdminParseImageRoute = ApiAdminParseImageRouteImport.update({
   path: '/api/admin/parse-image',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAdminParseDocxRoute = ApiAdminParseDocxRouteImport.update({
+  id: '/api/admin/parse-docx',
+  path: '/api/admin/parse-docx',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAdminImportRoute = ApiAdminImportRouteImport.update({
   id: '/api/admin/import',
   path: '/api/admin/import',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAdminEmbedChunksRoute = ApiAdminEmbedChunksRouteImport.update({
+  id: '/api/admin/embed-chunks',
+  path: '/api/admin/embed-chunks',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAdminDocumentsRoute = ApiAdminDocumentsRouteImport.update({
@@ -111,7 +123,9 @@ export interface FileRoutesByFullPath {
   '/api/chat': typeof ApiChatRoute
   '/api/admin/config': typeof ApiAdminConfigRoute
   '/api/admin/documents': typeof ApiAdminDocumentsRouteWithChildren
+  '/api/admin/embed-chunks': typeof ApiAdminEmbedChunksRoute
   '/api/admin/import': typeof ApiAdminImportRoute
+  '/api/admin/parse-docx': typeof ApiAdminParseDocxRoute
   '/api/admin/parse-image': typeof ApiAdminParseImageRoute
   '/api/admin/parse-markdown': typeof ApiAdminParseMarkdownRoute
   '/api/admin/parse-url': typeof ApiAdminParseUrlRoute
@@ -128,7 +142,9 @@ export interface FileRoutesByTo {
   '/api/chat': typeof ApiChatRoute
   '/api/admin/config': typeof ApiAdminConfigRoute
   '/api/admin/documents': typeof ApiAdminDocumentsRouteWithChildren
+  '/api/admin/embed-chunks': typeof ApiAdminEmbedChunksRoute
   '/api/admin/import': typeof ApiAdminImportRoute
+  '/api/admin/parse-docx': typeof ApiAdminParseDocxRoute
   '/api/admin/parse-image': typeof ApiAdminParseImageRoute
   '/api/admin/parse-markdown': typeof ApiAdminParseMarkdownRoute
   '/api/admin/parse-url': typeof ApiAdminParseUrlRoute
@@ -146,7 +162,9 @@ export interface FileRoutesById {
   '/api/chat': typeof ApiChatRoute
   '/api/admin/config': typeof ApiAdminConfigRoute
   '/api/admin/documents': typeof ApiAdminDocumentsRouteWithChildren
+  '/api/admin/embed-chunks': typeof ApiAdminEmbedChunksRoute
   '/api/admin/import': typeof ApiAdminImportRoute
+  '/api/admin/parse-docx': typeof ApiAdminParseDocxRoute
   '/api/admin/parse-image': typeof ApiAdminParseImageRoute
   '/api/admin/parse-markdown': typeof ApiAdminParseMarkdownRoute
   '/api/admin/parse-url': typeof ApiAdminParseUrlRoute
@@ -165,7 +183,9 @@ export interface FileRouteTypes {
     | '/api/chat'
     | '/api/admin/config'
     | '/api/admin/documents'
+    | '/api/admin/embed-chunks'
     | '/api/admin/import'
+    | '/api/admin/parse-docx'
     | '/api/admin/parse-image'
     | '/api/admin/parse-markdown'
     | '/api/admin/parse-url'
@@ -182,7 +202,9 @@ export interface FileRouteTypes {
     | '/api/chat'
     | '/api/admin/config'
     | '/api/admin/documents'
+    | '/api/admin/embed-chunks'
     | '/api/admin/import'
+    | '/api/admin/parse-docx'
     | '/api/admin/parse-image'
     | '/api/admin/parse-markdown'
     | '/api/admin/parse-url'
@@ -199,7 +221,9 @@ export interface FileRouteTypes {
     | '/api/chat'
     | '/api/admin/config'
     | '/api/admin/documents'
+    | '/api/admin/embed-chunks'
     | '/api/admin/import'
+    | '/api/admin/parse-docx'
     | '/api/admin/parse-image'
     | '/api/admin/parse-markdown'
     | '/api/admin/parse-url'
@@ -217,7 +241,9 @@ export interface RootRouteChildren {
   ApiChatRoute: typeof ApiChatRoute
   ApiAdminConfigRoute: typeof ApiAdminConfigRoute
   ApiAdminDocumentsRoute: typeof ApiAdminDocumentsRouteWithChildren
+  ApiAdminEmbedChunksRoute: typeof ApiAdminEmbedChunksRoute
   ApiAdminImportRoute: typeof ApiAdminImportRoute
+  ApiAdminParseDocxRoute: typeof ApiAdminParseDocxRoute
   ApiAdminParseImageRoute: typeof ApiAdminParseImageRoute
   ApiAdminParseMarkdownRoute: typeof ApiAdminParseMarkdownRoute
   ApiAdminParseUrlRoute: typeof ApiAdminParseUrlRoute
@@ -303,11 +329,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAdminParseImageRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/admin/parse-docx': {
+      id: '/api/admin/parse-docx'
+      path: '/api/admin/parse-docx'
+      fullPath: '/api/admin/parse-docx'
+      preLoaderRoute: typeof ApiAdminParseDocxRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/admin/import': {
       id: '/api/admin/import'
       path: '/api/admin/import'
       fullPath: '/api/admin/import'
       preLoaderRoute: typeof ApiAdminImportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/admin/embed-chunks': {
+      id: '/api/admin/embed-chunks'
+      path: '/api/admin/embed-chunks'
+      fullPath: '/api/admin/embed-chunks'
+      preLoaderRoute: typeof ApiAdminEmbedChunksRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/admin/documents': {
@@ -355,7 +395,9 @@ const rootRouteChildren: RootRouteChildren = {
   ApiChatRoute: ApiChatRoute,
   ApiAdminConfigRoute: ApiAdminConfigRoute,
   ApiAdminDocumentsRoute: ApiAdminDocumentsRouteWithChildren,
+  ApiAdminEmbedChunksRoute: ApiAdminEmbedChunksRoute,
   ApiAdminImportRoute: ApiAdminImportRoute,
+  ApiAdminParseDocxRoute: ApiAdminParseDocxRoute,
   ApiAdminParseImageRoute: ApiAdminParseImageRoute,
   ApiAdminParseMarkdownRoute: ApiAdminParseMarkdownRoute,
   ApiAdminParseUrlRoute: ApiAdminParseUrlRoute,

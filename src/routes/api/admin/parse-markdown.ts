@@ -3,8 +3,12 @@ import matter from "gray-matter";
 import {
   assertProviderRuntimeConfigured,
   getLLMProvider,
-  resolveProviderRuntime,
+  resolveProviderRuntimeWithStoredSecrets,
 } from "@/lib/modelRouter";
+import {
+  reviewSemanticDuplicates,
+  type SemanticDuplicateReviewResult,
+} from "@/lib/semanticDuplicateReview";
 
 const ALLOWED_CATEGORIES = [
   "arrival",
@@ -31,6 +35,7 @@ type ParseResponse =
   | {
       metadata: Record<string, unknown>;
       content: string;
+      duplicate_review: SemanticDuplicateReviewResult;
     }
   | {
       error: string;
@@ -173,7 +178,7 @@ function buildExtractionPrompt(markdownContent: string) {
 
 async function generateMetadataWithMiniMax(content: string) {
   const provider = await getLLMProvider("metadata_llm");
-  const runtime = resolveProviderRuntime(provider);
+  const runtime = await resolveProviderRuntimeWithStoredSecrets(provider);
   assertProviderRuntimeConfigured(provider, runtime);
 
   const { default: OpenAI } = await import("openai");
@@ -290,10 +295,12 @@ export const Route = createFileRoute("/api/admin/parse-markdown")({
               frontmatterKeywords.length > 0 ? frontmatterKeywords : generatedKeywords,
             summary: getString(frontmatterMetadata.summary) || getString(generatedMetadata.summary),
           };
+          const duplicateReview = await reviewSemanticDuplicates({ content });
 
           return json({
             metadata,
             content,
+            duplicate_review: duplicateReview,
           });
         } catch (error) {
           return json(

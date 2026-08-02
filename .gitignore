@@ -10,6 +10,7 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+build
 .output
 .vinxi
 .tanstack/**
@@ -33,3 +34,4 @@ dist-ssr
 
 .env.local
 .env
+.env.*.local

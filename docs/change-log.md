@@ -2,8 +2,38 @@
 
 Important changes in reverse chronological order. Keep this file concise and update it whenever the project architecture or product surface changes.
 
+## 2026-07-09
+
+- Improved DeepSeek text LLM switching: env fallbacks now use `DEEPSEEK_BASE_URL`, `DEEPSEEK_API_KEY`, and `DEEPSEEK_MODEL` when DeepSeek is selected; chat provider errors no longer hard-code "MiniMax"; `check:env` accepts MiniMax or DeepSeek text LLM runtime config.
+- Added backend encrypted model secret storage: `supabase/model-secrets.sql`, `src/lib/secureModelSecrets.ts`, write-only API Key/Base URL fields in `/admin/settings`, and runtime secret resolution through `modelRouter`. `app_config` remains non-secret and stores only provider/model/env-var metadata.
+
+## 2026-06-03
+
+- Added `docs/deployment-domestic.zh-CN.md`, a Chinese version of the Mainland China deployment pre-plan, and linked it from the English plan and project state.
+- Expanded `docs/deployment-domestic.md` into a detailed Mainland China deployment pre-plan covering Vercel/Supabase/provider access risks, Alibaba/Tencent/Huawei/Cloudflare options, DNS/ICP/HTTPS, env vars, security, rollback, and test checkpoints. No business logic or UI changed.
+- Confirmed image parser configuration is independent from chat answer generation: `/api/chat` uses `chat_llm`, metadata extraction uses `metadata_llm`, image import uses `image_parser`, and embeddings use the embedding provider.
+- Added server-side image parser config logging for provider/model/env-var names/endpoint without printing API keys. The MiniMax API-vlm body still sends only `prompt` and `image_url`; `image_parser.model` is logged for observability and future endpoint support.
+
+## 2026-06-02
+
+- Made Admin Import backward-compatible when `documents.content_hash` or `document_chunks.content_hash` has not been migrated yet: import now retries without hash fields and returns warnings pointing to `supabase/deduplication.sql`.
+- Added Task H Word / DOCX Import: installed `mammoth`, added `/api/admin/parse-docx`, added DOCX upload parsing in `/admin/import`, added fallback metadata behavior, semantic duplicate review support, and `npm run test:docx-parse`.
+- Added Task K semantic duplicate review: `supabase/semantic-duplicate-review.sql`, `src/lib/semanticDuplicateReview.ts`, parse-time duplicate candidate review for Markdown/WeChat/Image/URL imports, an admin import warning panel, `SEMANTIC_DUPLICATE_THRESHOLD`, and `npm run test:semantic-dedupe`.
+- Added Task J lightweight duplicate handling: `supabase/deduplication.sql`, normalized SHA-256 content hashes, import-time document/chunk hash writing, duplicate document warnings, same-document chunk dedupe, Hybrid Search content-hash dedupe, and `npm run test:dedupe`.
+- Added `docs/portfolio-readme.md` to preserve a future public/portfolio README draft while keeping the root `README.md` focused on private internal handoff.
+- Added closed-source internal handoff documentation: `docs/closed-source.md`, `docs/handoff.md`, `docs/env-vars.md`, `docs/setup-checklist.md`, `docs/deployment-checklist.md`, and `docs/github-private-checklist.md`.
+- Reworked `README.md` as a private internal project README instead of an open-source or community-facing README.
+- Added `.env.example` with placeholders only and added `npm run check:env` / `npm run check:secrets` for environment presence checks and pre-commit secret scanning without printing secret values.
+- Updated `.gitignore` with explicit env and build output exclusions for closed-source handoff safety.
+- Added `npm run test:answer-stability` to call Hybrid Search and answer generation three times per fixed question, comparing top source titles and context chunk ids while allowing minor answer text variation.
+- Updated the RAG system prompt so partially relevant context produces a grounded partial answer instead of immediately returning `当前知识库没有覆盖这个问题。`
+- Added server-only `RAG_DEBUG=true` retrieval debug logs for `/api/chat`, printing Hybrid Search context chunk metadata and score previews without returning debug details to users.
+- Stabilized Hybrid Search ordering by adding `chunk_index` to keyword/vector results, moving shared merge/ranking into `src/lib/hybridSearch.ts`, sorting by final score then document id and chunk index, and adding `npm run test:hybrid-stability`.
+- Stabilized `/api/chat` answer generation by setting knowledge-base chat LLM decoding to `temperature = 0.1`, `top_p = 0.3`, and `max_tokens = 1500`, reducing inconsistent answers when the same retrieved context is used repeatedly.
+
 ## 2026-06-01
 
+- Added `/api/admin/embed-chunks` and wired `/admin/import` to automatically run best-effort embedding backfill for newly imported document chunks after Import succeeds.
 - Added `docs/deployment-domestic.md`, a Mainland China deployment pre-plan covering domestic CDN/SSR runtime options, Supabase/data-plane alternatives, model provider routing, DNS/ICP/HTTPS, security, rollback, and test checkpoints.
 - Updated `/admin/import` so a successful Import clears the form, parser inputs, and selected image state while preserving the Admin Token for the next import.
 - Extended `/api/admin/parse-url` to support single WeChat article URLs under `https://mp.weixin.qq.com/*`, extracting title, official account name, body text, and body image URLs. Detected body images are sent through the existing MiniMax API-vlm image understanding flow and appended to the import content with `source_type = "wechat_url"`.

@@ -6,8 +6,12 @@ import { understandImageWithMiniMaxVlm } from "@/lib/imageUnderstanding";
 import {
   assertProviderRuntimeConfigured,
   getLLMProvider,
-  resolveProviderRuntime,
+  resolveProviderRuntimeWithStoredSecrets,
 } from "@/lib/modelRouter";
+import {
+  reviewSemanticDuplicates,
+  type SemanticDuplicateReviewResult,
+} from "@/lib/semanticDuplicateReview";
 
 const ALLOWED_CATEGORIES = [
   "arrival",
@@ -57,6 +61,7 @@ type ParseUrlResponse =
       keywords: string[];
       summary: string;
       content: string;
+      duplicate_review: SemanticDuplicateReviewResult;
     }
   | {
       error: string;
@@ -665,7 +670,7 @@ function buildExtractionPrompt(content: string, pageTitle: string, sourceUrl: st
 
 async function generateMetadata(content: string, pageTitle: string, sourceUrl: string) {
   const provider = await getLLMProvider("metadata_llm");
-  const runtime = resolveProviderRuntime(provider);
+  const runtime = await resolveProviderRuntimeWithStoredSecrets(provider);
   assertProviderRuntimeConfigured(provider, runtime);
 
   const { default: OpenAI } = await import("openai");
@@ -803,6 +808,7 @@ export const Route = createFileRoute("/api/admin/parse-url")({
               );
             }
 
+            const duplicateReview = await reviewSemanticDuplicates({ content });
             const finalResponse = {
               title:
                 getString(metadata.title) ||
@@ -819,6 +825,7 @@ export const Route = createFileRoute("/api/admin/parse-url")({
                 getString(metadata.summary) ||
                 article.content.slice(0, 180).replace(/\s+/g, " ").trim(),
               content,
+              duplicate_review: duplicateReview,
             };
 
             return json(finalResponse);
@@ -847,6 +854,7 @@ export const Route = createFileRoute("/api/admin/parse-url")({
             );
           }
 
+          const duplicateReview = await reviewSemanticDuplicates({ content });
           const finalResponse = {
             title: getString(metadata.title) || fallbackTitle(pageTitle, content),
             category: normalizeCategory(metadata.category),
@@ -859,6 +867,7 @@ export const Route = createFileRoute("/api/admin/parse-url")({
               getString(metadata.summary) ||
               content.slice(0, 180).replace(/\s+/g, " ").trim(),
             content,
+            duplicate_review: duplicateReview,
           };
 
           return json(finalResponse);

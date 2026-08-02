@@ -2,8 +2,9 @@ import { Agent, ProxyAgent, setGlobalDispatcher } from "undici";
 import {
   assertProviderRuntimeConfigured,
   getEmbeddingProvider,
-  resolveProviderRuntime,
+  resolveProviderRuntimeWithStoredSecrets,
   type EmbeddingProvider,
+  type ProviderRuntime,
 } from "./modelRouter";
 
 const EMBEDDING_TIMEOUT_MS = 30000;
@@ -32,8 +33,8 @@ function getEnv(name: string) {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
-function assertEmbeddingConfig(provider: EmbeddingProvider) {
-  assertProviderRuntimeConfigured(provider);
+function assertEmbeddingConfig(provider: EmbeddingProvider, runtime: ProviderRuntime) {
+  assertProviderRuntimeConfigured(provider, runtime);
 }
 
 function getEmbeddingEndpoint(baseUrl: string) {
@@ -159,8 +160,8 @@ export async function generateEmbedding(text: string): Promise<number[]> {
   }
 
   const provider = await getEmbeddingProvider();
-  assertEmbeddingConfig(provider);
-  const runtime = resolveProviderRuntime(provider);
+  const runtime = await resolveProviderRuntimeWithStoredSecrets(provider);
+  assertEmbeddingConfig(provider, runtime);
   configureEmbeddingDispatcher();
   const endpoint = getEmbeddingEndpoint(runtime.baseUrl ?? "");
 

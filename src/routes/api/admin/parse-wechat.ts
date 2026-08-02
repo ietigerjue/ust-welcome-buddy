@@ -3,8 +3,12 @@ import * as cheerio from "cheerio";
 import {
   assertProviderRuntimeConfigured,
   getLLMProvider,
-  resolveProviderRuntime,
+  resolveProviderRuntimeWithStoredSecrets,
 } from "@/lib/modelRouter";
+import {
+  reviewSemanticDuplicates,
+  type SemanticDuplicateReviewResult,
+} from "@/lib/semanticDuplicateReview";
 
 const ALLOWED_CATEGORIES = [
   "arrival",
@@ -38,6 +42,7 @@ type ParseWechatResponse =
       keywords: string[];
       summary: string;
       content: string;
+      duplicate_review: SemanticDuplicateReviewResult;
     }
   | {
       error: string;
@@ -279,7 +284,7 @@ function buildExtractionPrompt(content: string) {
 
 async function generateMetadataWithMiniMax(content: string) {
   const provider = await getLLMProvider("metadata_llm");
-  const runtime = resolveProviderRuntime(provider);
+  const runtime = await resolveProviderRuntimeWithStoredSecrets(provider);
   assertProviderRuntimeConfigured(provider, runtime);
 
   const { default: OpenAI } = await import("openai");
@@ -383,6 +388,7 @@ export const Route = createFileRoute("/api/admin/parse-wechat")({
         }
 
         const keywords = normalizeKeywords(generatedMetadata.keywords);
+        const duplicateReview = await reviewSemanticDuplicates({ content });
         const finalResponse = {
           title:
             getString(generatedMetadata.title) ||
@@ -396,6 +402,7 @@ export const Route = createFileRoute("/api/admin/parse-wechat")({
           keywords,
           summary: getString(generatedMetadata.summary),
           content,
+          duplicate_review: duplicateReview,
         };
 
         console.log("[admin/parse-wechat] final response fields:", {

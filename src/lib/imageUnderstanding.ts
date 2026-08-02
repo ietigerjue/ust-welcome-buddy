@@ -1,7 +1,7 @@
 import {
   assertProviderRuntimeConfigured,
   getImageParserProvider,
-  resolveProviderRuntime,
+  resolveProviderRuntimeWithStoredSecrets,
 } from "./modelRouter";
 
 const VLM_TIMEOUT_MS = 60000;
@@ -86,8 +86,18 @@ export async function understandImageWithMiniMaxVlm(
   prompt: string
 ) {
   const provider = await getImageParserProvider();
-  const runtime = resolveProviderRuntime(provider);
+  const runtime = await resolveProviderRuntimeWithStoredSecrets(provider);
   assertProviderRuntimeConfigured(provider, runtime);
+
+  console.log("[image_parser] MiniMax VLM request config", {
+    provider: provider.provider,
+    model: runtime.model || "(not configured)",
+    baseUrlEnv: provider.baseUrlEnv,
+    apiKeyEnv: provider.apiKeyEnv,
+    endpoint: runtime.endpoint,
+    note:
+      "Model is logged for image_parser observability; /v1/coding_plan/vlm request body currently sends prompt and image_url only.",
+  });
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), VLM_TIMEOUT_MS);
@@ -96,16 +106,16 @@ export async function understandImageWithMiniMaxVlm(
     const response = await fetch(
       joinUrl(runtime.baseUrl ?? "", runtime.endpoint ?? ""),
       {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${runtime.apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        prompt,
-        image_url: bufferToDataUrl(fileBuffer, mimeType),
-      }),
-      signal: controller.signal,
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${runtime.apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          prompt,
+          image_url: bufferToDataUrl(fileBuffer, mimeType),
+        }),
+        signal: controller.signal,
       }
     );
     const rawBody = await response.text();
